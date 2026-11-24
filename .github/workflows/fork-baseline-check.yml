@@ -1,0 +1,57 @@
+name: Fork baseline check (POSIX)
+
+# Same environment as Fork full tree (POSIX), but pinned to the commit the Windows work started
+# from: it answers "were these failures already there, or did we add them?". Only the files that
+# failed in run 45315371362 are selected.
+
+on:
+  push:
+    branches: [ci/baseline-check]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: baseline (16 files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout base commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: 0f602c5f6f
+
+      - name: Install ripgrep (prebuilt binary)
+        run: |
+          set -euo pipefail
+          RG_VERSION=15.1.0
+          RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599
+          RG_TARBALL=ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          curl -sSfL --retry 3 --retry-delay 5 -o "$RG_TARBALL" \
+            "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${RG_TARBALL}"
+          echo "${RG_SHA256}  ${RG_TARBALL}" | sha256sum -c -
+          tar -xzf "$RG_TARBALL"
+          sudo mv "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl/rg" /usr/local/bin/rg
+          rm -rf "$RG_TARBALL" "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl"
+          rg --version
+
+      - name: Set up locked Python and test dependencies
+        uses: ./.github/actions/setup-pm
+        with:
+          packages: pnpm
+          extras: '["all", "anthropic", "bedrock", "mistral", "fal", "modal", "daytona", "parallel-web", "keychain"]'
+          test-environment: 'true'
+          prune-python-cache: true
+
+      - name: Run the files that failed on the work branch
+        run: scripts/run_tests.sh
+        env:
+          HERMES_TEST_PATHS: "tests/agent/test_compression_persistence.py:tests/agent/test_vault_key_storage.py:tests/ci/test_prompt_surface.py:tests/cron/test_cron_cancel.py:tests/cron/test_script_claim_heartbeat.py:tests/gateway/test_journey_compress_restart_fifo.py:tests/hermes_cli/test_session_recovery_lost_and_found.py:tests/hermes_cli/test_tools_config.py:tests/scripts/test_boundary_lint.py:tests/tools/test_approval_windows.py:tests/tools/test_approval_windows_hardline_scripts.py:tests/tools/test_browser_use_cli_owned_daemon.py:tests/tools/test_file_staleness.py:tests/tools/test_known_file_write_baseline.py:tests/tools/test_subprocess_stdin_guard.py:tests/tools/test_tool_search.py"
+          HERMES_TEST_FORKSERVER: "1"
+          HERMES_TEST_WORKERS: "4"
+          HERMES_TEST_FILE_TIMEOUT: "1800"
+          OPENROUTER_API_KEY: ""
+          OPENAI_API_KEY: ""
+          NOUS_API_KEY: ""
