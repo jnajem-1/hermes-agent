@@ -31,7 +31,7 @@ from agent.conversation_compression import (
     run_compress_context_with_progress_timeout,
 )
 from tests.fixtures.storage_seed import seed_session
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 
 def _drain_admission_slots():
@@ -392,7 +392,7 @@ class TestF6ExecutorSaturation:
 
         from persistence_assembly import open_persistence, profile_scope
 
-        with tempfile.TemporaryDirectory() as td:
+        with temp_home() as td:
             db = open_persistence(profile_scope(home=Path(td)))
             session_id = "F6_PRESTART_FENCE"
             seed_session(db, session_id, "cli")

@@ -8,6 +8,8 @@ prompt only (never the system prompt or the persisted handoff prefix), so the ca
 untouched; f-string interpolation does not re-parse them, so braces in them are safe.
 """
 
+from typing import Any
+
 UNVERIFIED_SECTION_HEADING = "## Unverified / Working Hypotheses"
 
 EPISTEMIC_STANCE_RULE = (
@@ -19,6 +21,44 @@ UNVERIFIED_HYPOTHESES_SECTION = f"""
 
 {UNVERIFIED_SECTION_HEADING}
 [UNVERIFIED: <claim> — <basis so far>, one per line. If none, write "None."]"""
+
+# Variant spellings the summarizer reaches for; each canonicalizes to UNVERIFIED_SECTION_HEADING.
+_STANCE_HEADING_VARIANTS = frozenset({
+    "unverified / working hypotheses", "unverified hypotheses", "working hypotheses",
+    "unverified", "unverified claims",
+})
+
+
+def normalize_stance_section(text: str) -> tuple[str, dict[str, Any]]:
+    """Canonicalize the stance heading and measure the section it heads.
+
+    Returns ``(text, report)`` where report is ``{"present", "hypothesis_lines", "explicit_none"}``.
+    Counting stops at the next heading so a later section that happens to mention ``UNVERIFIED``
+    cannot inflate the number. Pure and single-pass: the summary is measured, never rewritten.
+    """
+    present = False
+    hypothesis_lines = 0
+    explicit_none = False
+    in_section = False
+    out: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            heading = stripped.lstrip("#").strip().lower()
+            if heading in _STANCE_HEADING_VARIANTS:
+                out.append(UNVERIFIED_SECTION_HEADING)
+                present = in_section = True
+                continue
+            in_section = False
+        elif in_section:
+            body = stripped[2:] if stripped.startswith("- ") else stripped
+            if body.upper().startswith("UNVERIFIED:"):
+                hypothesis_lines += 1
+            elif body.rstrip(".").strip().lower() == "none":
+                explicit_none = True
+        out.append(line)
+    return "\n".join(out), {"present": present, "hypothesis_lines": hypothesis_lines,
+                            "explicit_none": explicit_none}
 
 
 def _today_for_prompt() -> str:

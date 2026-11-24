@@ -8,6 +8,7 @@ not reset anything.
 
 from __future__ import annotations
 
+import inspect
 import json
 from unittest.mock import patch
 
@@ -113,6 +114,19 @@ def _run_turn_with_compaction(tmp_path, monkeypatch, summary):
     relay = pytest.importorskip("nemo_relay")
     if getattr(relay, "_native", None) is None:
         pytest.skip("NeMo Relay native binding is unavailable on this platform")
+    plugin_initialize = getattr(getattr(relay, "plugin", None), "initialize", None)
+    if plugin_initialize is None or "additional_plugins_toml" not in inspect.signature(
+        plugin_initialize
+    ).parameters:
+        # pyproject pins nemo-relay>=0.11,<0.12 only for Python >=3.14; an older interpreter gets
+        # whatever relay happens to be installed, and pre-0.11 cannot take the explicit plugins file.
+        from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+        try:
+            installed = _pkg_version("nemo-relay")
+        except PackageNotFoundError:
+            installed = getattr(relay, "__version__", "unknown")
+        pytest.skip(f"nemo-relay {installed} predates the dynamic-plugin initialize() API")
 
     from agent import relay_runtime
     from agent.context_compressor import ContextCompressor

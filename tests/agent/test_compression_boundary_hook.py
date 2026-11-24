@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 class TestCompressionBoundaryHook:
     def _make_agent(self, session_db):
@@ -39,8 +39,8 @@ class TestCompressionBoundaryHook:
             return agent
 
     def test_on_session_start_called_with_compression_boundary(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(db)
 
             # Stub the context compressor: we only need to observe the hook.
@@ -96,8 +96,8 @@ class TestCompressionBoundaryHook:
 
     def test_automatic_notification_follows_core_persistence(self):
         events = []
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(db)
             compressor = MagicMock()
             compressor.compress.return_value = [
@@ -133,8 +133,8 @@ class TestCompressionBoundaryHook:
             assert events == ["persist", "compression"]
 
     def test_failure_before_persistence_does_not_notify(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(db)
             compressor = MagicMock()
             compressor.compress.side_effect = RuntimeError("synthetic compression failure")
@@ -150,8 +150,8 @@ class TestCompressionBoundaryHook:
             compressor.on_session_start.assert_not_called()
 
     def test_no_progress_does_not_notify(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(db)
             compressor = MagicMock()
             compressor.compress.side_effect = lambda messages, **_kwargs: messages
@@ -207,8 +207,8 @@ class TestCompressionBoundaryHook:
 
     def test_hook_failure_does_not_break_compression(self):
         """If the context engine raises from on_session_start, compression still completes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(db)
 
             compressor = MagicMock()
@@ -273,8 +273,8 @@ class TestSessionCompressEvent:
 
     def test_event_emitted_on_compression(self):
         events = []
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db = storage_handle(Path(tmpdir))
+        with temp_home() as tmpdir:
+            db = storage_handle(tmpdir)
             agent = self._make_agent(
                 db, event_callback=lambda et, ctx: events.append((et, ctx))
             )

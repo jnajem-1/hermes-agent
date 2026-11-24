@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from tests.fixtures.storage_read import transcript_rows
 from tests.fixtures.storage_seed import seed_session
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ class TestFlushDeduplication:
         """First flush writes all new messages, second flush writes none."""
         from persistence_assembly import open_persistence, profile_scope
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with temp_home() as tmpdir:
             db = open_persistence(profile_scope(home=Path(tmpdir)))
             try:
                 agent = self._make_agent(db)

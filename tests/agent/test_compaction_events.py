@@ -21,7 +21,7 @@ from agent.conversation_compression import CompressionCommitFence, compress_cont
 from agent.conversation_compression_checkpoint import CompressionCheckpointUnavailable
 from agent.transports.codex_app_server_session import TurnResult
 from tests.fixtures.storage_seed import seed_session
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 SECRET = "TOPSECRET_TRANSCRIPT_TEXT"
 V1_FIELDS = {
@@ -405,10 +405,10 @@ def test_rotation_publishes_after_the_split_with_the_attempts_own_session(publis
     telemetry; the record is still built from this attempt's telemetry and names the session it started in."""
     from run_agent import AIAgent
 
-    with tempfile.TemporaryDirectory() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+    with temp_home() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
         agent = AIAgent(
             api_key="test-key", base_url="https://openrouter.ai/api/v1", model="test/model", quiet_mode=True,
-            persistence=storage_handle(Path(tmpdir)), session_id="rotating-session",
+            persistence=storage_handle(tmpdir), session_id="rotating-session",
             skip_context_files=True, skip_memory=True,
         )
         agent.compression_in_place = False
@@ -431,8 +431,8 @@ def test_a_split_that_fails_after_rewriting_history_is_still_a_compaction(publis
     sees the compacted history next, so Relay must reset freshness, and the record says what failed."""
     from run_agent import AIAgent
 
-    with tempfile.TemporaryDirectory() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-        db = storage_handle(Path(tmpdir))
+    with temp_home() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+        db = storage_handle(tmpdir)
         seed_session(db, "in-place-session", "cli", model="test/model")
         agent = AIAgent(
             api_key="test-key", base_url="https://openrouter.ai/api/v1", model="test/model", quiet_mode=True,
@@ -468,8 +468,8 @@ def test_an_in_place_engine_whose_split_fails_after_the_archive_is_still_a_compa
         msgs[:] = [msgs[0], {"role": "assistant", "content": "SANITIZED SUMMARY"}, msgs[-1]]
         return msgs
 
-    with tempfile.TemporaryDirectory() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-        db = storage_handle(Path(tmpdir))
+    with temp_home() as tmpdir, patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+        db = storage_handle(tmpdir)
         seed_session(db, "in-place-engine", "cli", model="test/model")
         agent = AIAgent(
             api_key="test-key", base_url="https://openrouter.ai/api/v1", model="test/model", quiet_mode=True,

@@ -28,6 +28,7 @@ from agent.auxiliary_client import (
     call_llm,
     extract_content_or_reasoning,
 )
+from agent.compaction_provenance import append_provenance_section
 from agent.context_engine import ContextEngine, sanitize_memory_context
 from agent.context_compressor_durable import DurableStateMixin
 from agent.context_compressor_prellm import PreLlmSkipMixin
@@ -35,7 +36,13 @@ from agent.context_compressor_window import CompactionWindowMixin, summary_view
 from agent.context_compressor_prune import ProactivePruneMixin, delegate_stub, stub_arguments, terminal_stub
 from agent.context_compressor_summary import SummaryDispatchMixin
 from agent.context_compressor_sampling import SummaryInputSamplingMixin
-from agent.context_compressor_prompt_rules import EPISTEMIC_STANCE_RULE, UNVERIFIED_HYPOTHESES_SECTION, _today_for_prompt
+from agent.context_compressor_prompt_rules import (
+    EPISTEMIC_STANCE_RULE,
+    UNVERIFIED_HYPOTHESES_SECTION,
+    UNVERIFIED_SECTION_HEADING,
+    _today_for_prompt,
+    normalize_stance_section,
+)
 from agent.context_compressor_typed_input import TYPED_TURNS_POINTER, typed_summary_messages
 from agent.conversation_compression_scaffolding import is_user_role_scaffolding
 from agent.context_compressor_tail import (
@@ -3432,7 +3439,9 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
         summary = elide(summary, _FALLBACK_SUMMARY_MAX_CHARS)
         # Re-inject AFTER the size cap: markers live at the end, where truncation cuts.
         summary = _reinject_pruned_skill_markers(summary, _pruned_names)
-        return self._augment_summary_lean(summary, turns_to_summarize)
+        # A fallback is still a summary: it names a checkout just like a model-written one, and provenance
+        # is the only part of this handoff the harness can state with certainty.
+        return append_provenance_section(self._augment_summary_lean(summary, turns_to_summarize))
 
     def _demote_stale_tail_tools(self, messages: list[dict[str, Any]], tail_start: int) -> list[dict[str, Any]]:
         """Lean mode: demote stale tail tool results to recovery stubs (``demote_stale_tail_tools``)."""
@@ -3453,6 +3462,19 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
             if heading not in summary:
                 summary += build()
         return summary
+
+    def _finalize_summary_text(
+        self, summary: str, turns_to_summarize: list[dict[str, Any]]
+    ) -> tuple[str, dict[str, Any]]:
+        """Everything the harness adds to the summarizer's own text, and the stance report.
+
+        The lean sections follow the tail policy; the epistemic stance and the workspace provenance block
+        do not. Provenance is a property of the summary in every mode: a legacy-mode summary describes a
+        checkout exactly as precisely as a lean one, and only the harness knows which checkout that was.
+        """
+        summary = self._augment_summary_lean(summary, turns_to_summarize)
+        summary, stance = normalize_stance_section(summary)
+        return append_provenance_section(summary), stance
 
     def _record_summary_input_coverage(self, coverage: dict[str, int]) -> None:
         """Expose lean sampling coverage without including transcript content in telemetry."""
@@ -3642,7 +3664,13 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
             # See #32106.
             summary = _reinject_pruned_skill_markers(summary, _pruned_skill_names)
             summary = self._ground_historical_task_snapshot(summary, turns_to_summarize)
-            summary = self._augment_summary_lean(summary, turns_to_summarize)
+            summary, stance = self._finalize_summary_text(summary, turns_to_summarize)
+            self._record_stance_section(stance)
+            if not stance["present"]:
+                logger.warning(
+                    "Compaction summary omitted the %s section; uncertain claims may now read as fact.",
+                    UNVERIFIED_SECTION_HEADING.lstrip("# ").strip(),
+                )
             self._validate_summary_user_provenance(summary, has_user_turn)
             # A detached stale attempt must not publish its late summary onto shared compressor state:
             # the fallback already advanced _previous_summary and owns the cooldown/error fields. The

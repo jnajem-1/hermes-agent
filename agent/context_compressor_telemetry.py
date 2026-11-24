@@ -24,6 +24,14 @@ def _safe_int(value: Any) -> int | None:
 class CompressionTelemetryMixin:
     """Per-attempt telemetry dict: seeded at attempt start, filled by each compression phase."""
 
+    def _record_stance_section(self, stance: dict[str, Any]) -> None:
+        """Record whether the generated summary kept the epistemic-stance section."""
+        telemetry = getattr(self, "_active_compression_telemetry", None)
+        if not isinstance(telemetry, dict):
+            return
+        telemetry["stance_section_present"] = bool(stance.get("present"))
+        telemetry["stance_hypothesis_lines"] = _safe_int(stance.get("hypothesis_lines")) or 0
+
     def _begin_compression_telemetry(
         self, *, current_tokens: int | None, attempt_id: str | None = None, session_id: str | None = None,
         trigger_source: str | None = None,
@@ -52,6 +60,8 @@ class CompressionTelemetryMixin:
             "summary_input_chars": None, "summary_input_sampled_chars": None, "summary_input_omitted_chars": None,
             "summary_input_record_count": None, "summary_input_sampled_record_count": None,
             "summary_input_elided_record_count": None,
+            # Epistemic stance (filled by _record_stance_section from the generated summary).
+            "stance_section_present": None, "stance_hypothesis_lines": None,
             # Candidate effect is captured by the compressor, then replaced with the exact committed shape.
             "method": "none", "items_dropped": 0, "messages_before": None, "messages_after": None,
             "tokens_before": None, "tokens_after": None, "tokens_reclaimed": None, "token_count_method": None,

@@ -9,6 +9,7 @@ import httpx
 import openai
 from unittest.mock import patch, MagicMock
 
+from agent.compaction_provenance import strip_provenance_section
 from agent.context_compressor import (
     ContextCompressor,
     HISTORICAL_TASK_HEADING,
@@ -887,7 +888,7 @@ class TestNonStringContent:
 
         assert summary.startswith(f"{SUMMARY_PREFIX}\n{HISTORICAL_TASK_HEADING}\n")
         assert "do something" in summary
-        assert summary.endswith("plain summary text")
+        assert strip_provenance_section(summary).endswith("plain summary text")
 
 
 

@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+from agent.compaction_provenance import strip_provenance_section
 from agent.context_compressor import (
     COMPRESSED_SUMMARY_METADATA_KEY,
     ContextCompressor,
@@ -192,7 +193,7 @@ def test_resume_handoff_after_default_protected_head_decays_initial_turns():
     # Grounding (761a0b124e) may prepend a deterministic task-snapshot
     # section — pin the contract, not the exact stored string.
     stored_summary = compressor._previous_summary or ""
-    assert stored_summary.endswith("fresh summary")
+    assert strip_provenance_section(stored_summary).endswith("fresh summary")
     assert old_summary not in stored_summary
     assert all(
         "original task before first compaction" not in str(msg.get("content", ""))
@@ -475,7 +476,7 @@ def test_fallback_handoff_anchors_reach_the_next_summarizer():
     compressor = _compressor()
     with patch("agent.context_compressor.call_llm", return_value=_response("FIRST healthy summary")):
         messages = compressor.compress(_messages_with_handoff("seed summary"))
-    assert (compressor._previous_summary or "").endswith("FIRST healthy summary")
+    assert strip_provenance_section(compressor._previous_summary or "").endswith("FIRST healthy summary")
 
     messages = messages + [
         {"role": "user", "content": "FALLBACK-ANCHOR-ASK please fix the parser"},

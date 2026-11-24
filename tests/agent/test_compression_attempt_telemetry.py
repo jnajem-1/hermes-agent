@@ -9,7 +9,7 @@ import pytest
 from agent.conversation_compression import _emit_aborted_attempt_telemetry, compress_context
 from agent.context_compressor import ContextCompressor
 from tests.fixtures.storage_seed import seed_messages, seed_session
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 
 class _TodoStore:
@@ -296,7 +296,7 @@ def test_in_place_commit_preserves_seeded_telemetry_fields(caplog):
 
     from agent.conversation_compression import CompressionCommitFence, run_compress_context_with_progress_timeout
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_home() as tmp:
         from persistence_assembly import open_persistence, profile_scope
         from run_agent import AIAgent
 

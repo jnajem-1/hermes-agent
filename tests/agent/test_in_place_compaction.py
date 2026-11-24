@@ -18,7 +18,7 @@ from persistence.conversation.messages import NewMessage, TranscriptRead, Transc
 from tests.fixtures.storage_holder import raw_holder
 from tests.fixtures.storage_read import conversation, session_row, transcript_rows
 from tests.fixtures.storage_seed import seed_messages, seed_session
-from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle, temp_home
 
 
 
@@ -66,8 +66,8 @@ class TestInPlaceCompaction:
         """In-place mode: id unchanged, no child row, no rename, history kept."""
         from agent.conversation_compression import compress_context
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_120000_aaaaaa"
             _seed(db, sid, "my-research")
             agent = _make_agent(db, sid, in_place=True)
@@ -132,8 +132,8 @@ class TestInPlaceCompaction:
         """The compacted list must not introduce consecutive same-role messages."""
         from agent.conversation_compression import compress_context
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_120500_cccccc"
             _seed(db, sid, "alt")
             agent = _make_agent(db, sid, in_place=True)
@@ -150,8 +150,8 @@ class TestInPlaceCompaction:
         preserved old (parent) session before it is ended (#47202)."""
         from agent.conversation_compression import compress_context
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             _seed(db, "rot_flush", "f")
             agent = _make_agent(db, "rot_flush", in_place=False)
             calls = {"n": 0}
@@ -172,8 +172,8 @@ class TestRotationFallbackWhenFlagOff:
         unchanged — forks a renamed continuation session."""
         from agent.conversation_compression import compress_context
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_130000_bbbbbb"
             _seed(db, sid, "my-research")
             agent = _make_agent(db, sid, in_place=False)
@@ -221,8 +221,8 @@ class TestInPlaceAntiGrowthGuard:
     def test_in_place_refuses_growing_compression(self):
         from agent.conversation_compression import compress_context
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_antigrow"
             _seed(db, sid, "grow")
             agent = _make_agent(db, sid, in_place=True)
@@ -261,8 +261,8 @@ class TestInPlaceAntiGrowthGuard:
         from agent.conversation_compression import compress_context
         from agent.model_metadata import estimate_messages_tokens_rough
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260819_salvage"
             _seed(db, sid, "salvage")
             agent = _make_agent(db, sid, in_place=True)
@@ -321,8 +321,8 @@ class TestCompactedTurnsStaySearchable:
 
     def test_compacted_turns_found_by_default_search(self):
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_search"
             seed_session(db, sid, "cli", model="test/model")
             for r, c in [
@@ -357,8 +357,8 @@ class TestCompactedTurnsStaySearchable:
         """Rewind/undo (active=0, compacted=0) must NOT leak into default
         search — the distinction the compacted flag preserves."""
 
-        with tempfile.TemporaryDirectory() as tmp:
-            db = storage_handle(Path(tmp))
+        with temp_home() as tmp:
+            db = storage_handle(tmp)
             sid = "20260619_undo"
             seed_session(db, sid, "cli", model="test/model")
             seed_messages(db, sid, {"role": "user", "content": "ZEBRAWORD remember this"},
