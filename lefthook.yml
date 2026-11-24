@@ -9,7 +9,7 @@ lefthook: "sh -c 'if test -f scripts/run-lefthook; then exec sh scripts/run-left
 # `env -u GIT_DIR`: git exports GIT_DIR to hooks in a linked worktree, and with it set
 # `--show-toplevel` answers the job's cwd (apps/desktop/), not the checkout.
 templates:
-  just: sh "$(env -u GIT_DIR git rev-parse --show-toplevel)/scripts/hook-just"
+  just: sh $(env -u GIT_DIR git rev-parse --show-toplevel)/scripts/hook-just
 
 pre-commit:
   jobs:

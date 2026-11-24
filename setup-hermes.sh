@@ -120,10 +120,16 @@ else
   tmp="$(mktemp -d "$store/.bootstrap-XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
   archive="$tmp/${url##*/}"
   fetch_pinned() {
-    if curl -fsSL -o "$2" "$1"; then return 0; else _curl_status=$?; fi
+    local out="$2"
+    # MSYS/Git-bash: give curl a C:/... path. curl 8.23 (the Windows build and the UCRT64
+    # one alike) fails the write with "(23) client returned ERROR on write" when -o is an
+    # MSYS path such as /c/Users/..., while the mixed form works. sha256sum and unzip keep
+    # using the MSYS path, so only curl's argument is converted.
+    if command -v cygpath >/dev/null 2>&1; then out="$(cygpath -m "$2")"; fi
+    if curl -fsSL -o "$out" "$1"; then return 0; else _curl_status=$?; fi
     case "$_curl_status" in 5|6|7|18|22|28|52|55|56) ;; *) return "$_curl_status" ;; esac
     local mirror; mirror="$(mirror_url_for "$sha")" || return 1
-    curl -fsSL -o "$2" "$mirror" || return 1
+    curl -fsSL -o "$out" "$mirror" || return 1
   }
   if ! fetch_pinned "$url" "$archive"; then
     _tried="$url"
