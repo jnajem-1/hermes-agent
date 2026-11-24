@@ -11,6 +11,10 @@ name: Fork full tree (POSIX)
 
 on:
   workflow_dispatch:
+  # workflow_dispatch needs the file on the default branch; a push trigger does not, so the
+  # branch-only copy starts itself when it lands here.
+  push:
+    branches: [ci/full-tree-posix]
 
 permissions:
   contents: read
