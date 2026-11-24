@@ -21,7 +21,10 @@ jobs:
       - name: Checkout base commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
-          ref: 0f602c5f6f
+          # Full SHA plus full history: a short ref makes checkout fetch refs/heads/<sha>, which
+          # does not exist, and the job dies in 40s with `git fetch` exit 1.
+          ref: 0f602c5f6f18615632535251d62a2db74ce93b69
+          fetch-depth: 0
 
       - name: Install ripgrep (prebuilt binary)
         run: |
