@@ -604,7 +604,11 @@ def _record_successful_read(task_data: dict, task_id: str, path: str, resolved_s
         _cap_read_tracker_data(task_data)
 
     try:
-        file_state.record_read(task_id, resolved_str, partial=not complete)
+        # HERMES-LOCAL-PATCH write-guard-partial (2026-11-03): stamp 'partial' from the
+        # actual view (a whole-file read must never be treated as a partial view).
+        _windowed_view = bool(offset > 1) or bool(redacted) or (
+            total_lines is not None and end_line is not None and end_line < total_lines)
+        file_state.record_read(task_id, resolved_str, partial=_windowed_view)
     except Exception:
         logger.debug("file_state.record_read failed", exc_info=True)
 

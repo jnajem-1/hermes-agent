@@ -67,7 +67,12 @@ def _home(tmp_path, monkeypatch, delegation: dict, plugins=("probe-options",), d
     # Bundled plugins: only the delegation category (the default strategy is a bundled plugin).
     bundled = tmp_path / "bundled"
     bundled.mkdir()
-    (bundled / "delegation").symlink_to(REPO_PLUGINS / "delegation", target_is_directory=True)
+    try:
+        (bundled / "delegation").symlink_to(REPO_PLUGINS / "delegation", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # The product links bundled plugin categories by symlink; a Windows host without Developer
+        # Mode (or an elevated shell) cannot create one, so nothing below can be exercised.
+        pytest.skip("creating a symlink needs Developer Mode or an elevated shell on this host")
     monkeypatch.setenv("HOME", str(tmp_path / "os-home"))
     monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(plugins_mod, "get_bundled_plugins_dir", lambda: bundled)

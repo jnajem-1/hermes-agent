@@ -80,6 +80,18 @@ def _redact(text: str) -> str:
         return "[line withheld: redaction unavailable]"
 
 
+def _redact_obj(value: Any) -> Any:
+    """Recursively redact string values in a JSON-able object (dict/list/str) so the
+    result artifact written under cache/delegation never carries credentials."""
+    if isinstance(value, str):
+        return _redact(value)
+    if isinstance(value, dict):
+        return {k: _redact_obj(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_obj(v) for v in value]
+    return value
+
+
 def _joined(*parts: str) -> str:
     return " ".join(filter(None, parts))
 
@@ -210,6 +222,27 @@ class LiveTranscriptWriter:
             f"exit_reason={exit_reason}" if exit_reason else "",
             "(iteration budget exhausted)" if exit_reason == "max_iterations" else "",
             f"error: {_one_line(entry['error'], _RESULT_MAX)}" if entry.get("error") else ""))
+        self._write_result_json(entry)
+
+
+    def _write_result_json(self, entry: dict[str, Any]) -> None:
+        """Persist the FULL final result beside the log as ``task-<n>.result.json``
+        (redacted — this dir is mounted read-only into remote backends). The .log is a
+        compact view that truncates long lines; this artifact is the full-fidelity record.
+        Written atomically (temp sibling + replace) so a crash mid-write cannot leave a
+        corrupt/partial file that a reader would treat as missing. Best-effort: never
+        raises into the agent loop. Retention: pruned with the delegation dir (~7 days)."""
+        with _best_effort("result json write"):
+            if self.path is None:
+                return
+            out = self.path.parent / (self.path.stem + ".result.json")
+            tmp = out.with_suffix(out.suffix + ".tmp")
+            tmp.write_text(
+                json.dumps(_redact_obj(entry), indent=2, ensure_ascii=False,
+                           default=lambda o: _redact(str(o))),
+                encoding="utf-8")
+            tmp.replace(out)
+            entry["result_artifact"] = str(out)
 
 
 def wrap_progress_callback(inner_cb, writer: LiveTranscriptWriter):

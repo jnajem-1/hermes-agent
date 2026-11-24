@@ -882,6 +882,13 @@ def cmd_validate(path: str, as_json: bool = False, install_deps: bool = False) -
     installs the declared Python deps first so the capability probe imports what an install would."""
     from hermes_cli.plugin_validate import validate_plugin_dir
     from hermes_cli.plugins_cmd import _console
+    # HERMES-LOCAL-PATCH plugin-validate-name (2026-11-03): allow an installed plugin
+    # name/key as well as a directory path -- resolve it before validating.
+    if not Path(path).is_dir():
+        from hermes_cli.plugins_cmd import _user_installed_plugin_dir
+        _resolved_dir = _user_installed_plugin_dir(path)
+        if _resolved_dir is not None:
+            path = str(_resolved_dir)
     probe = None
     if install_deps:
         import pm

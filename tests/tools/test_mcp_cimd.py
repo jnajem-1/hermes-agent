@@ -51,6 +51,9 @@ def _set_interactive_stdin(monkeypatch, *, is_tty: bool = True) -> None:
     mock_stdin = MagicMock()
     mock_stdin.isatty.return_value = is_tty
     monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)
+    # On Windows the console probe also asks the CRT for a real console handle, which a MagicMock
+    # stdin cannot provide; mirror the mock's answer so the gate sees what the test set up.
+    monkeypatch.setattr("tools.mcp_oauth._stdin_is_console", lambda: is_tty)
 
 @pytest.fixture(autouse=True)
 def clean_port_state():

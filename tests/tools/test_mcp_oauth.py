@@ -47,6 +47,9 @@ def _set_interactive_stdin(monkeypatch, *, is_tty: bool = True) -> None:
     mock_stdin = MagicMock()
     mock_stdin.isatty.return_value = is_tty
     monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)
+    # On Windows the console probe also asks the CRT for a real console handle, which a MagicMock
+    # stdin cannot provide; mirror the mock's answer so the gate sees what the test set up.
+    monkeypatch.setattr("tools.mcp_oauth._stdin_is_console", lambda: is_tty)
 
 
 def _hit_callback_when_ready(url: str, timeout: float = 15.0) -> None:
@@ -695,6 +698,8 @@ class TestIsInteractive:
         mock_stdin = MagicMock()
         mock_stdin.isatty.return_value = True
         monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)
+        # A MagicMock stdin cannot answer the Windows console-handle probe; mirror the mock's isatty.
+        monkeypatch.setattr("tools.mcp_oauth._stdin_is_console", lambda: True)
 
         assert _is_interactive() is True
         with mod.suppress_interactive_oauth():
