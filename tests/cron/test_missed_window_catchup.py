@@ -55,10 +55,14 @@ def slot_env(tmp_path, monkeypatch):
     S._running_futures.clear()
 
     counter = home / "fires.txt"
-    (home / "scripts" / "fire.sh").write_text(
-        f"#!/bin/sh\necho fired >> {counter}\necho fired\n", encoding="utf-8")
-    (home / "scripts" / "fire.sh").chmod(0o755)
-    job = J.create_job(prompt=None, schedule="every 1h", name="slot", script="fire.sh",
+    # A ``.py`` script runs on the interpreter the scheduler picked, so the fixture works wherever
+    # the suite runs; a ``#!/bin/sh`` script silently executes nothing on Windows, which used to
+    # look like a lost occurrence rather than a missing shell.
+    (home / "scripts" / "fire.py").write_text(
+        "import pathlib\n"
+        f"pathlib.Path({str(counter)!r}).open('a', encoding='utf-8').write('fired\\n')\n"
+        "print('fired')\n", encoding="utf-8")
+    job = J.create_job(prompt=None, schedule="every 1h", name="slot", script="fire.py",
                        no_agent=True, deliver="local")
     slot = (J._hermes_now() - timedelta(minutes=1)).replace(microsecond=0).isoformat()
     stored = J.load_jobs()

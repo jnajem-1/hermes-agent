@@ -5,6 +5,7 @@ local writer or an agent without persistence. Late borrows are still released.
 """
 
 import concurrent.futures
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -123,6 +124,9 @@ def test_a_store_replaced_under_the_owner_refuses_the_run(owner_run, tmp_path, m
     """A handle opened after state.db was replaced serves another generation, where the run's writes would miss
     the owner's accepted-work record, so cron refuses it; an unreplaced store serves the run."""
     import os
+
+    if replaced and sys.platform == "win32":
+        pytest.skip("os.replace over an open sqlite store needs POSIX rename semantics")
 
     from persistence.sqlite._holder import StoreHolder
     from persistence_assembly import open_persistence, profile_scope

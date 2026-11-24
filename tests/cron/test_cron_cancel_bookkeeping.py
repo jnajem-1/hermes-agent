@@ -14,6 +14,7 @@ from datetime import timedelta
 import pytest
 
 from cron import executions, jobs, scheduler, scheduler_authority
+from cron.occurrences import scheduled_instant
 
 
 @pytest.fixture
@@ -101,7 +102,11 @@ def test_stopping_a_ladder_rerun_does_not_spend_another_repeat(store):
     stored[0]["repeat"]["completed"] = 1  # the original occurrence already counted
     jobs.save_jobs(stored)
     instant = jobs.get_job(job["id"])["next_run_at"]
-    rerun = dict(jobs.get_job(job["id"]), _scheduled_instant=instant,
+    # The dispatch snapshot carries the NORMALIZED instant (cron/jobs.py sets
+    # ``_scheduled_instant = scheduled_instant(next_run_at)``); a raw offset string here would never
+    # match ``scheduled_instant(STATE_KEY["at"])`` and the run would be treated as a fresh
+    # occurrence, spending a repeat slot the ladder already paid for.
+    rerun = dict(jobs.get_job(job["id"]), _scheduled_instant=scheduled_instant(instant),
                  **{STATE_KEY: {"at": instant, "expr": job["schedule"].get("expr")}})
     fire = executions.create_execution(job["id"], source="test")["id"]
     request_cancel(fire)

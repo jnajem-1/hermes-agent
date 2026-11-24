@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 
+import sys
 import pytest
 
 
@@ -292,6 +293,9 @@ def test_agent_job_provider_classification_unchanged(error, expected):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fixture is a `#!<python>` shebang wrapper, which Windows never executes as a launcher")
 def test_run_job_no_agent_uses_configured_interpreter(hermes_env):
     """A no-agent job's script must run through the configured interpreter.
 

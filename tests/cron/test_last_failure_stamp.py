@@ -75,3 +75,42 @@ class TestLastFailureStamp:
         record = get_job(job["id"])
         assert record.get("last_failure") is None
         assert record["last_delivery_error"] == "webhook unreachable"
+
+    def test_suppressed_run_does_not_erase_a_delivery_failure(self, tmp_cron_dir):
+        """A quiet ([SILENT]) run delivered nothing, so it cannot testify that the last
+        note reached the user. Clearing the error here read as "already read" to the
+        next run's continuity block (#158289 review)."""
+        job = create_job(prompt="Watch the fleet", schedule="every 1h")
+        mark_job_run(job["id"], success=True, delivery_error="webhook unreachable",
+                     delivery_outcome="failed")
+        failed = get_job(job["id"])
+        assert failed["last_delivery_error"] == "webhook unreachable"
+        # The failure carries its own timestamp so a stale sticky error can still be aged.
+        assert failed["last_delivery_error_at"]
+
+        assert mark_job_run(job["id"], success=True, delivery_outcome="suppressed") is True
+        record = get_job(job["id"])
+        assert record["last_status"] == "ok"
+        assert record["last_delivery_error"] == "webhook unreachable"
+        assert record["last_delivery_error_at"] == failed["last_delivery_error_at"]
+
+        assert mark_job_run(job["id"], success=True, delivery_outcome="suppressed_acked") is True
+        assert get_job(job["id"])["last_delivery_error"] == "webhook unreachable"
+
+    def test_a_run_that_delivered_again_clears_the_failure(self, tmp_cron_dir):
+        """Recovery is still observable: once a send lands, the old error goes away."""
+        job = create_job(prompt="Watch the fleet", schedule="every 1h")
+        mark_job_run(job["id"], success=True, delivery_error="webhook unreachable",
+                     delivery_outcome="failed")
+        assert mark_job_run(job["id"], success=True, delivery_outcome="delivered") is True
+        record = get_job(job["id"])
+        assert record["last_delivery_error"] is None
+        assert record.get("last_delivery_error_at") in (None, "")
+
+    def test_unknown_outcome_keeps_legacy_clearing(self, tmp_cron_dir):
+        """Callers that never classify a delivery (no outcome) keep the pre-existing
+        behaviour: the field describes the run that just finished."""
+        job = create_job(prompt="Watch the fleet", schedule="every 1h")
+        mark_job_run(job["id"], success=True, delivery_error="webhook unreachable")
+        assert mark_job_run(job["id"], success=True) is True
+        assert get_job(job["id"])["last_delivery_error"] is None

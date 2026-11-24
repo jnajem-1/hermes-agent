@@ -985,7 +985,16 @@ cron:
   script_timeout_seconds: 1800   # 30 minutes
 ```
 
-Or set the `HERMES_CRON_SCRIPT_TIMEOUT` environment variable. The resolution order is: env var → config.yaml → 3600s default.
+Or set the `HERMES_CRON_SCRIPT_TIMEOUT` environment variable. The resolution order is: the job's own `script_timeout` → env var → config.yaml → 3600s default.
+
+For one slow job, prefer a per-job ceiling over raising the global knob:
+
+```bash
+hermes cron edit <job-id> --script-timeout 7200
+hermes cron edit <job-id> --script-timeout ""   # inherit the global value again
+```
+
+`hermes cron create` takes the same flag. The value must be whole seconds of at least 1; a corrupt value in `jobs.json` is ignored with a warning and the job falls back to the global resolution rather than failing to dispatch.
 
 Cron also bounds post-run session and agent-resource cleanup. This happens after the LLM turn returns, so it is separate from the inactivity timeout. The default is 10 seconds per cleanup operation. If a storage or client finalizer stops returning, the scheduler logs an error, releases the job's in-flight guard, and allows later runs to dispatch instead of skipping that job forever.
 

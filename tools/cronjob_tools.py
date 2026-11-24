@@ -727,6 +727,7 @@ def _action_create(a: dict[str, Any]) -> str:
             monitor_url=_normalize_optional_job_value(a["monitor_url"]),
             # CLI-only lane: absent from CRONJOB_SCHEMA and the model dispatch (models don't pick models).
             reasoning_effort=a["reasoning_effort"], interpreter=a["interpreter"],
+            script_timeout=a["script_timeout"],
             timezone=_normalize_optional_job_value(a["timezone"]),
             grace_minutes=a["grace_minutes"],
             pinned=bool(a["pinned"]),
@@ -908,6 +909,9 @@ def _update_core_fields(job: dict[str, Any], a: dict[str, Any], updates: dict[st
     if a["interpreter"] is not None:
         # CLI-only lane like reasoning_effort; update_job trims, empty string clears.
         updates["interpreter"] = a["interpreter"]
+    if a["script_timeout"] is not None:
+        # Explicit per-job ceiling; update_job normalizes and rejects non-positive values.
+        updates["script_timeout"] = a["script_timeout"]
     # Re-validate the EFFECTIVE provider/base_url on EVERY update: a job persisted before
     # this guard may hold an unsafe pair, and editing an unrelated field must not leave it
     # schedulable. Merging this update over the stored job lets an operator remediate.
@@ -1089,6 +1093,7 @@ def cronjob(
     paused_reason: Optional[str] = None,
     pinned: Optional[bool] = None,
     interpreter: Optional[str] = None,
+    script_timeout: Optional[int | str] = None,
     timezone: Optional[str] = None,
     grace_minutes: Optional[int | str] = None) -> str:
     """Unified cron job management tool."""

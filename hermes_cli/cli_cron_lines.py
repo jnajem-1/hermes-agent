@@ -17,6 +17,26 @@ def _cron(**kwargs) -> dict:
     return cli_commands_mixin._cron_api(**kwargs)
 
 
+def _stale_delivery_age(stamp, last_run_at) -> str:
+    """`` (3d ago)`` when the displayed delivery failure predates the run being shown.
+
+    A suppressed run no longer clears ``last_delivery_error``, so the message can outlive the
+    run that produced it. Without this the error reads as if it happened on the last run.
+    """
+    from datetime import datetime
+
+    from hermes_cli.timefmt import relative_time
+
+    try:
+        failed = datetime.fromisoformat(str(stamp))
+        ran = datetime.fromisoformat(str(last_run_at))
+    except (TypeError, ValueError):
+        return ""
+    if abs((ran - failed).total_seconds()) <= 120:
+        return ""
+    return f" ({relative_time(failed)})"
+
+
 def cron_overview_lines() -> list[str]:
     """Bare ``/cron``: the command card, then the current jobs. Plain text (the shared gateway serves
     the same lines to every local session, gateway/session_cron_commands.py)."""
@@ -65,7 +85,9 @@ def cron_list_lines(*, include_disabled: bool = False) -> list[str]:
             # delivery_failed: the run succeeded but delivery didn't — the reason lives
             # in last_delivery_error (last_error is None).
             if status == "delivery_failed" and job.get("last_delivery_error"):
-                status = _t("cron.status_delivery_failed", error=job["last_delivery_error"])
+                error = job["last_delivery_error"] + _stale_delivery_age(
+                    job.get("last_delivery_error_at"), job.get("last_run_at"))
+                status = _t("cron.status_delivery_failed", error=error)
             elif status == "error" and job.get("last_error"):
                 status = _t("cron.status_error", error=job["last_error"])
             out.append(f"  {_t('cron.last_run', when=job['last_run_at'], status=status)}")

@@ -7,6 +7,7 @@ the agent job is skipped (not failed), keeps its due instant, and one warning na
 """
 from datetime import timedelta
 import os
+import sys
 
 import pytest
 
@@ -157,6 +158,8 @@ def test_headless_receipt_recovery_never_connects_or_spawns(cron_home, monkeypat
 
 
 def test_no_agent_jobs_still_fire_without_a_gateway(cron_home, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("fixture script is a /bin/sh shebang; Windows has no sh")
     counter = cron_home / "fires.txt"
     script = cron_home / "scripts" / "fire.sh"
     script.write_text(f"#!/bin/sh\necho fired >> {counter}\necho fired\n", encoding="utf-8")

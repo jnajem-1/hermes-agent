@@ -62,6 +62,13 @@ _UPSTREAM_CONTEXT_INTRO = (
     "The following is the most recent output from a preceding cron job. Use it as context for "
     "your analysis."
 )
+# Self-continuity assumes the previous answer reached the user. When its delivery failed, that
+# assumption is wrong and the job would skip re-reporting a note nobody ever received.
+_SELF_CONTEXT_UNDELIVERED_INTRO = (
+    "The following is this job's most recent non-silent output from a previous run, but its "
+    "delivery failed: the user never received it. Treat it as unreported. Re-surface what still "
+    "matters rather than assuming it was read, and do not repeat work that is still done."
+)
 
 # Run-document length frames. The writer (``cron.scheduler.run_job``) stamps
 # these labels; the reader below parses them. Defined here (not in scheduler.py)
@@ -136,6 +143,38 @@ def _clip_to_context_budget(text: str) -> str:
     return f"{text[:keep]}\n\n[... {omitted} chars omitted ...]\n\n{text[-keep:]}"
 
 
+def _archive_delivery_failed(job_id: str, archive: Path) -> bool:
+    """True when the run that wrote *archive* recorded a failed delivery in the ledger.
+
+    Archives are named ``%Y-%m-%d_%H-%M-%S`` in local wall time and the ledger's ``claimed_at``
+    is the same local stamp written at run start, so a ±5-minute match identifies the attempt
+    without depending on the seconds agreeing. Fails open: an unreadable ledger, or no attempt
+    near that stamp, means "assume it was delivered" (the pre-existing behaviour).
+    """
+    from datetime import datetime
+
+    try:
+        from cron.executions import list_executions
+
+        wrote_at = datetime.strptime(archive.stem, "%Y-%m-%d_%H-%M-%S")
+        for row in list_executions(job_id=job_id, limit=20):
+            if row.get("delivery_outcome") not in ("failed", "unknown"):
+                continue
+            claimed = row.get("claimed_at") or ""
+            try:
+                claimed_at = datetime.fromisoformat(str(claimed))
+            except ValueError:
+                continue
+            if claimed_at.tzinfo is not None:
+                # Both stamps are local wall time; the archive has no offset to compare against.
+                claimed_at = claimed_at.replace(tzinfo=None)
+            if abs((claimed_at - wrote_at).total_seconds()) <= 300:
+                return True
+    except (OSError, ValueError) as exc:
+        logger.debug("context_from: delivery check skipped for %s (%s)", archive, exc)
+    return False
+
+
 def _inject_context_from(job: dict, prompt: str) -> tuple[str, bool]:
     """Prepend the latest output of each ``context_from`` job; returns ``(prompt, injected)``."""
     context_from = job.get("context_from")
@@ -165,6 +204,7 @@ def _inject_context_from(job: dict, prompt: str) -> tuple[str, bool]:
                 reverse=True,
             )
             latest_output = ""
+            latest_archive = None
             for output_file in output_files:
                 candidate = output_file.read_text(encoding="utf-8-sig")
                 # Only the run header describes suppression; script/agent payloads can
@@ -181,13 +221,20 @@ def _inject_context_from(job: dict, prompt: str) -> tuple[str, bool]:
                 if answer is None:
                     continue  # [SILENT]/blank response — try an older archive
                 latest_output = answer
+                latest_archive = output_file
                 break
             if not latest_output:
                 continue  # silent skip — no archive with a usable answer
             latest_output = _clip_to_context_budget(latest_output)
             if is_self:
+                intro = (
+                    _SELF_CONTEXT_UNDELIVERED_INTRO
+                    if latest_archive is not None
+                    and _archive_delivery_failed(str(job.get("id") or ""), latest_archive)
+                    else _SELF_CONTEXT_INTRO
+                )
                 prompt = _prepend_context_block(
-                    prompt, "Your previous run's output", _SELF_CONTEXT_INTRO, latest_output)
+                    prompt, "Your previous run's output", intro, latest_output)
             else:
                 prompt = _prepend_context_block(
                     prompt, f"Output from job '{source_job_id}'", _UPSTREAM_CONTEXT_INTRO,
@@ -338,7 +385,7 @@ def _build_job_prompt(
             prerun_script if prerun_script is not None
             else _script._run_job_script(
                 script_path, workdir=_sched._resolve_job_workdir(job, str(job.get("id") or "")),
-                interpreter=job.get("interpreter")))
+                interpreter=job.get("interpreter"), job=job))
         if success and not script_output:
             return None  # no output → nothing to report, skip the AI call
         heading, intro = (

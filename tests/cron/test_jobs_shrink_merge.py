@@ -11,8 +11,22 @@ from __future__ import annotations
 import errno
 import json
 import os
+import sys
 
 import pytest
+
+
+def _can_symlink() -> bool:
+    """Probe once: Windows without Developer Mode raises WinError 1314 before the fixture runs."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        target, link = os.path.join(tmp, "t"), os.path.join(tmp, "l")
+        try:
+            open(target, "w").close()
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):
+            return False
+        return True
 
 
 @pytest.fixture
@@ -211,6 +225,9 @@ def test_nested_create_survives_outer_stale_save(hermes_env):
     assert seed["id"] in ids
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32" and not _can_symlink(),
+    reason="creating a symlink needs Developer Mode or an elevated shell on Windows")
 def test_symlinked_store_saves_by_rename_not_in_place_copy(hermes_env, tmp_path, monkeypatch):
     """jobs.json symlinked into another dir (treated as another filesystem) must still be
     published by an atomic rename — never the EXDEV in-place copy fallback, which tears the

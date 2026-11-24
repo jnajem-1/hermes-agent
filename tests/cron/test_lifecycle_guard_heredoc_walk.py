@@ -6,7 +6,13 @@ referenced scripts and ``sh -c`` payloads on the raw command, so a >1 MiB data p
 inside the Python body failed closed as an oversized "script".
 """
 
+import sys
+
 import pytest
+
+_posix_paths = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fixture drives POSIX shell paths (/tmp/x, /opt/...); the walk never sees them here")
 
 from cron.lifecycle_guard import contains_gateway_lifecycle_command_or_referenced_script as guard
 
@@ -37,6 +43,7 @@ def test_allowlisted_name_function_heredoc_stays_visible(tmp_path):
     assert guard(command, cwd=str(tmp_path)) is True
 
 
+@_posix_paths
 def test_unquoted_heredoc_body_path_still_walked(tmp_path):
     """An expansion-capable body is not provably inert: the walk still sees it and fails closed."""
     big = _big_file(tmp_path)
@@ -90,6 +97,7 @@ def test_inert_heredoc_body_script_path_still_read(tmp_path):
     assert guard(command, cwd=str(tmp_path)) is True
 
 
+@_posix_paths
 def test_mentioned_data_file_that_cannot_be_scanned_is_not_a_verdict(tmp_path, monkeypatch):
     """A file only MENTIONED in an inert body may exhaust the text budget (one >64 KiB line), pull
     in 64+ remote-read misses (a markdown table of paths) or be a live SQLite database: each is

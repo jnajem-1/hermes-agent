@@ -221,6 +221,36 @@ def test_cron_runs_cli_prints_execution_history(monkeypatch, tmp_path, capsys):
     assert "boom" in output
 
 
+def test_cron_runs_cli_shows_that_a_successful_run_reached_nobody(
+    monkeypatch, tmp_path, capsys
+):
+    """A run that completed but delivered nothing must not read like a note the user has seen."""
+    executions = _point_ledger(monkeypatch, tmp_path)
+    row = executions.create_execution("cli-suppressed-job", source="builtin")
+    executions.finish_execution(row["id"], success=True, delivery_outcome="suppressed")
+    from hermes_cli.cron import cron_runs
+
+    cron_runs("cli-suppressed-job", limit=10)
+
+    output = capsys.readouterr().out
+    assert row["id"] in output
+    assert "delivery=suppressed" in output
+    assert "never reached the user" not in output
+
+
+def test_cron_runs_cli_flags_a_failed_delivery_as_unread(monkeypatch, tmp_path, capsys):
+    executions = _point_ledger(monkeypatch, tmp_path)
+    row = executions.create_execution("cli-undelivered-job", source="builtin")
+    executions.finish_execution(row["id"], success=True, delivery_outcome="failed")
+    from hermes_cli.cron import cron_runs
+
+    cron_runs("cli-undelivered-job", limit=10)
+
+    output = capsys.readouterr().out
+    assert "delivery=failed" in output
+    assert "never reached the user" in output
+
+
 def test_quick_backup_includes_execution_ledger():
     from hermes_cli.backup import _QUICK_STATE_FILES
 

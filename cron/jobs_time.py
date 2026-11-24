@@ -111,6 +111,33 @@ def normalize_grace_minutes(value: Any) -> Optional[int]:
     return minutes
 
 
+def normalize_script_timeout(value: Any) -> Optional[int]:
+    """Per-job cron script timeout in whole seconds; ``None`` means "inherit the global knob".
+
+    Values arrive from tool arguments and from jobs.json, so accept an int or a numeric string
+    and reject everything else — including ``bool`` (an ``int`` subclass, and a 1-second ceiling
+    is never what was typed) and floats (``1.5`` seconds is not a timeout). Callers decide
+    whether a bad value should be refused or degrade to the global resolution.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            seconds = int(text)
+        except ValueError:
+            raise ValueError(f"script_timeout must be whole seconds, got {value!r}") from None
+    elif isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"script_timeout must be whole seconds, got {value!r}")
+    else:
+        seconds = value
+    if seconds < 1:
+        raise ValueError(f"script_timeout must be at least 1 second, got {seconds}")
+    return seconds
+
+
 def zone_for_job(job_or_timezone: Any) -> Optional[ZoneInfo]:
     """The zone a job's schedule is expressed in, or None to inherit the profile's.
 

@@ -314,7 +314,10 @@ def test_run_one_job_exception_after_delivery_does_not_redeliver(monkeypatch):
     assert delivered == [("j5", "final response")]
     assert s.drain_delivery_queue(adapters={}, loop=None) == 0
     assert mark_calls[0] == (("j5", True, None), {
-        "delivery_error": None, "execution_id": "exec-j5", "status": "delivery_queued"})
+        "delivery_error": None, "execution_id": "exec-j5", "status": "delivery_queued",
+        # The classified outcome travels with the bookkeeping write so a silent run cannot
+        # erase the previous delivery failure (cron.jobs._record_run_outcome).
+        "delivery_outcome": "queued"})
     assert mark_calls[1] == (
         ("j5", False, "bookkeeping boom"),
         {"delivery_error": None},

@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from cron.env_settings import cron_env_setting
+from cron import jobs_time
 from cron.jobs import _ensure_cron_dir
 from pathlib import Path
 from typing import Any, Callable, Optional, TYPE_CHECKING
@@ -65,8 +66,23 @@ def _timeout_from_env_or_config(
     return None
 
 
-def _get_script_timeout() -> int:
-    """Resolve cron pre-run script timeout from module/env/config with a safe default."""
+def _get_script_timeout(job: Optional[dict] = None) -> int:
+    """Resolve cron pre-run script timeout: a job's own ``script_timeout``, then a patched
+    module value, then env/config, then the safe default.
+
+    A hand-edited jobs.json must not fail a dispatch: an invalid per-job value is logged and
+    the run falls back to the global chain instead of raising.
+    """
+    if isinstance(job, dict):
+        stored = job.get("script_timeout")
+        if stored is not None:
+            try:
+                override = jobs_time.normalize_script_timeout(stored)
+            except ValueError as exc:
+                logger.warning("Job %s: ignoring script_timeout (%s)", job.get("id"), exc)
+            else:
+                if override is not None:
+                    return override
     if _sched._SCRIPT_TIMEOUT != _sched._DEFAULT_SCRIPT_TIMEOUT:
         try:
             timeout = _positive_int(_sched._SCRIPT_TIMEOUT)
@@ -446,6 +462,7 @@ def _script_argv(
 def _run_job_script(
     script_path: str, workdir: Optional[str] = None,
     cancel_event: Optional[_CancelEventLike] = None, interpreter: Optional[str] = None,
+    job: Optional[dict] = None,
 ) -> tuple[bool, str]:
     """Execute a cron job's script and return ``(success, output)``; on failure *output* is the
     error message for the LLM to report. Env goes through ``build_subprocess_env`` (SECURITY.md
@@ -464,7 +481,7 @@ def _run_job_script(
     path, err = _resolve_script_path(script_path)
     if path is None:
         return False, err
-    script_timeout = _get_script_timeout()
+    script_timeout = _get_script_timeout(job)
     try:
         argv, env_overlay, err = _script_argv(path, interpreter)
         if argv is None:
@@ -579,7 +596,7 @@ def _run_job_script_with_claim_heartbeat(
     dispatched job, never re-read, so a stale runner cannot extend a replacement owner's claim."""
     def run() -> tuple[bool, str]:
         return _run_job_script(script_path, workdir=workdir, cancel_event=cancel_event,
-                               interpreter=job.get("interpreter"))
+                               interpreter=job.get("interpreter"), job=job)
 
     schedule = job.get("schedule")
     claim = job.get("run_claim")

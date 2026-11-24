@@ -51,6 +51,13 @@ def _settle_job_record(job_id: str, execution_id: str, delivery_error: Optional[
             return True
         job["last_status"] = status
         job["last_delivery_error"] = delivery_error
+        # Same rule as cron.jobs._record_run_outcome: the message keeps its age.
+        if delivery_error:
+            from hermes_time import now as _hermes_now
+
+            job["last_delivery_error_at"] = _hermes_now().isoformat()
+        else:
+            job.pop("last_delivery_error_at", None)
         save_jobs(jobs)
         return True
 

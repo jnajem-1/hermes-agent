@@ -1728,6 +1728,7 @@ _CREATE_FIELD_NORMALIZERS: dict[str, Callable[[Any], Any]] = {
     "context_from": _normalize_context_from,
     "failure_deliver": _normalize_failure_deliver,
     "interpreter": _normalize_job_optional_text,
+    "script_timeout": jobs_time.normalize_script_timeout,
     "timezone": jobs_time.normalize_timezone,
     "grace_minutes": jobs_time.normalize_grace_minutes,
     "catch_up": _normalize_catch_up,
@@ -1740,6 +1741,7 @@ _UPDATE_FIELD_NORMALIZERS: dict[str, Callable[[Any], Any]] = {
     "monitor_script": _normalize_job_optional_text,
     "monitor_url": _normalize_job_optional_text,
     "interpreter": _normalize_job_optional_text,
+    "script_timeout": jobs_time.normalize_script_timeout,
     "reasoning_effort": _normalize_reasoning_effort,
     # ``0`` is a real grace value (never catch up), so this normalizer must never use an
     # ``in {None, "", False}`` test — ``0 == False`` would silently clear it.
@@ -1799,6 +1801,7 @@ def create_job(
     paused_reason: Optional[str] = None,
     pinned: bool = False,
     interpreter: Optional[str] = None,
+    script_timeout: Optional[int] = None,
     timezone: Optional[str] = None,
     grace_minutes: Optional[int] = None,
     wrap_response: Optional[bool] = None,
@@ -1812,7 +1815,8 @@ def create_job(
     source run FIRST each tick; unchanged output suppresses the agent run (mutually exclusive,
     incompatible with ``no_agent``). reasoning_effort: per-job pin; capability NOT validated.
     interpreter: absolute/``~`` Python for ``.py`` script/monitor_script, validated at run time
-    (a venv can be rebuilt or moved after creation). timezone: IANA key pinning the schedule's
+    (a venv can be rebuilt or moved after creation). script_timeout: whole-second ceiling for this
+    job's script/monitor_script, overriding the global cron timeout (None inherits it). timezone: IANA key pinning the schedule's
     wall clock (None/'' = inherit the profile zone). grace_minutes: catch-up window override
     (0 = never catch up). wrap_response: None inherits cron.wrap_response, a bool overrides it."""
     if not isinstance(paused, bool):
@@ -1888,6 +1892,7 @@ def create_job(
         "last_status": None,
         "last_error": None,
         "last_delivery_error": None,
+        "last_delivery_error_at": None,
         # Targets acked without message_id/raw_response (accepted but UNVERIFIED).
         "last_delivery_unverified": None,
         # Most recent failed run ({at, detail}); NOT cleared by a later success (#118354).
@@ -1904,6 +1909,7 @@ def create_job(
     for key, value in (
         ("attach_to_session", normalized_attach), ("reasoning_effort", normalized_reasoning_effort),
         ("failure_deliver", f["failure_deliver"]), ("interpreter", f["interpreter"]),
+        ("script_timeout", f["script_timeout"]),
         ("timezone", f["timezone"]), ("grace_minutes", f["grace_minutes"]),
         ("catch_up", f["catch_up"]), ("wrap_response", f["wrap_response"]),
     ):
@@ -2359,7 +2365,7 @@ def note_fire_forward_failure(job_id: str, detail: str) -> bool:
 
 def _record_run_outcome(
     job: dict[str, Any], success: bool, error: Optional[str], delivery_error: Optional[str],
-    status: Optional[str], now: str,
+    status: Optional[str], now: str, delivery_outcome: Optional[str] = None,
 ) -> None:
     """Stamp one completed run onto *job*: status fields, failure streak, alert markers, claims."""
     job["last_run_at"] = now
@@ -2388,7 +2394,19 @@ def _record_run_outcome(
         # survives success (latest failure wins); the recency window is the consumer's
         # call. Delivery failures keep their own sticky last_delivery_error.
         job["last_failure"] = {"at": now, "detail": jobs_error_text.sanitize_persisted_error(error) or (status or "run failed")}
-    job["last_delivery_error"] = jobs_error_text.sanitize_persisted_error(delivery_error)
+    # A run that delivered nothing new (suppressed quiet run, acked incident, local-only lane) says
+    # nothing about whether the LAST note reached the user: keep the previous failure visible until
+    # a run actually delivers. Overwriting it here let a later [SILENT] run erase a real delivery
+    # failure, which reads as "the user has seen it" to every consumer (#158289 review).
+    if delivery_error or delivery_outcome not in ("suppressed", "suppressed_acked"):
+        job["last_delivery_error"] = jobs_error_text.sanitize_persisted_error(delivery_error)
+        # Stamp when the failure happened, so a sticky error can be read for age instead of
+        # looking current forever. Kept alongside the message: consumers that only print text
+        # (cron list, dashboard) stay unchanged.
+        if delivery_error:
+            job["last_delivery_error_at"] = now
+        else:
+            job.pop("last_delivery_error_at", None)
     # Clear both claims: the run is over, so the job is claimable again.
     job["fire_claim"] = None
     job.pop("pending_slot", None)
@@ -2461,6 +2479,7 @@ def mark_job_run(
     ladder_rung: bool = False,
     quota_hold_seconds: Optional[float] = None,
     recover_consumed_fire: bool = False,
+    delivery_outcome: Optional[str] = None,
 ) -> bool:
     """Mark a job as run: update last_run_at/last_status, bump completed, recompute next_run_at,
     and retire the record as a terminal completion when the repeat limit is reached. A manual run
@@ -2497,7 +2516,7 @@ def mark_job_run(
         now = _hermes_now().isoformat()
         extra = extra_fire.is_extra(job)  # read before the outcome clears the claim
         held = extra_fire.held_markers(job) if extra else {}
-        _record_run_outcome(job, success, error, delivery_error, status, now)
+        _record_run_outcome(job, success, error, delivery_error, status, now, delivery_outcome)
         job.update(held)  # a run-now queued mid-run is its own fire, not this one
         if execution_id is not None:  # retire ids recovery can no longer replay; latest stays last
             from cron.scheduler_authority import replayable_completions as live

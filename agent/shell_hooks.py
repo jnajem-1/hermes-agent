@@ -66,7 +66,15 @@ _skip_logged: set[tuple[str, str, str]] = set()
 
 
 def _home_key() -> str:
-    return str(get_hermes_home().expanduser().resolve())
+    """The registry key for the current home — the canonical one, from ``hermes_constants``.
+
+    A local ``str(resolve())`` here looked equivalent but kept the on-disk casing, while
+    ``hermes_home_key`` normcases (lowercase on Windows). Two definitions of "home key" meant a hook
+    registered here could never be found by a lookup built from the canonical key.
+    """
+    from hermes_constants import hermes_home_key
+
+    return hermes_home_key(get_hermes_home())
 
 
 def _forget_home_registrations(registry: set[tuple], lock: threading.Lock) -> None:

@@ -4,7 +4,7 @@ import contextlib
 import json
 import re
 import sys
-from datetime import timezone, UTC
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -251,6 +251,7 @@ def _job_rows(job: dict[str, Any]) -> list[tuple[str, str]]:
          if job.get("no_agent") else ""),
         ("Timezone", job.get("timezone")),
         ("Grace", f"{job['grace_minutes']} min" if job.get("grace_minutes") is not None else ""),
+        ("Script timeout", f"{job['script_timeout']}s" if job.get("script_timeout") is not None else ""),
         ("Workdir", job.get("workdir")),
         ("Python", job.get("interpreter")),
         ("Last run", f"{job.get('last_run_at', '?')}  {_last_run_display(job)}"
@@ -350,9 +351,16 @@ def cron_runs(job_id: Optional[str] = None, limit: int = 20):
         print("No cron execution attempts recorded.")
         return
     for record in records:
+        # A run can succeed and still reach nobody (suppressed, queued into a dead drain, refused).
+        # The ledger records that in ``delivery_outcome`` (#158289 review, RA): print it, or a note
+        # nobody received reads exactly like a note the user has already seen.
+        delivery = record.get("delivery_outcome")
         print(f"{record.get('id', '?')}  {record.get('status', '?'):<9}  "
               f"job={record.get('job_id', '?')}  source={record.get('source', '?')}  "
-              f"{record.get('claimed_at', '?')}")
+              f"{record.get('claimed_at', '?')}"
+              + (f"  delivery={delivery}" if delivery else ""))
+        if delivery in ("failed", "unknown"):
+            print("    delivery failed: the result never reached the user, treat it as unread.")
         if record.get("error"):
             print(f"    {record['error']}")
 
@@ -669,11 +677,17 @@ def _scripts_dir_for_cron() -> Path:
     return CRON_DIR.parent / "scripts"
 
 
+def _resolve_job_script(script: str) -> Path:
+    """The path a job's ``script`` field points at, resolved the way the scheduler resolves it."""
+    scripts_dir = _scripts_dir_for_cron().resolve()
+    raw = Path(script).expanduser()
+    return raw.resolve() if raw.is_absolute() else (scripts_dir / raw).resolve()
+
+
 def _script_health_issue(script: str) -> Optional[str]:
     """Human-readable script issue, or ``None`` when the path is OK."""
     scripts_dir = _scripts_dir_for_cron().resolve()
-    raw = Path(script).expanduser()
-    path = raw.resolve() if raw.is_absolute() else (scripts_dir / raw).resolve()
+    path = _resolve_job_script(script)
     try:
         path.relative_to(scripts_dir)
     except ValueError:
@@ -701,6 +715,72 @@ def _next_run_overdue_issue(next_run: str) -> Optional[str]:
         return None
     amount = f"{overdue_s / 3600:.1f}h" if overdue_s >= 3600 else f"{overdue_s / 60:.0f}m"
     return f"next_run_at is {amount} overdue — job is not firing (is the scheduler running?)"
+
+
+def _script_drift_note(job: dict[str, Any], script_path: str) -> Optional[str]:
+    """A NOTE when a script-mode job's code changed after its last verified run.
+
+    A script job proves itself only by running. Editing the wrapper (or a helper it shells out to)
+    after the last green fire leaves the job untested until the scheduled hour, so the note names the
+    changed file. It is a note and never an issue: the job itself is healthy, and the doctor exit code
+    must not flip for a healthy job.
+    """
+    last_run = _parse_stamp(job.get("last_run_at"))
+    if last_run is None:
+        # Never fired: there is no verified run to drift away from.
+        return None
+    path = Path(script_path).expanduser()
+    if not path.is_file():
+        return None  # a missing script is an issue, reported by _script_health_issue
+    changed = _newest_changed_file(path, last_run)
+    if changed is None:
+        return None
+    name = job.get("name") or job.get("id") or "this job"
+    return (f"script drift: {changed.name} changed after the last run of {name} — "
+            f"the next fire is its first test of that edit")
+
+
+def _parse_stamp(value: Any) -> Optional[float]:
+    """Epoch seconds from a stored ISO stamp (naive stamps are taken as UTC), else ``None``."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
+
+
+def _newest_changed_file(script: Path, last_run: float) -> Optional[Path]:
+    """The newest of the script and the absolute paths it mentions, when it changed after ``last_run``.
+
+    Naming the newest file matters: a wrapper edited before the last run but whose program changed
+    after it is still the program's edit that the next fire will be the first test of.
+    """
+    newest: Optional[Path] = None
+    newest_mtime = last_run
+    candidates = [script]
+    try:
+        text = script.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    for literal in re.findall(r"""["']([^"'\n]{1,400})["']""", text):
+        candidate = Path(literal).expanduser()
+        if candidate.is_absolute():
+            candidates.append(candidate)
+    for candidate in candidates:
+        try:
+            if not candidate.is_file():  # a missing script is an issue, reported by _script_health_issue
+                continue
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            continue
+        if mtime > newest_mtime:
+            newest, newest_mtime = candidate, mtime
+    return newest
 
 
 def _cron_doctor_issues_for_job(job: dict[str, Any]) -> list[str]:
@@ -759,21 +839,30 @@ def cron_doctor() -> int:
     from cron.jobs import list_jobs
     jobs = list_jobs(include_disabled=False)
     findings = [(job, issues) for job in jobs if (issues := _cron_doctor_issues_for_job(job))]
-    if not findings:
+    notes = [(job, note) for job in jobs
+             if (script := str(job.get("script") or "").strip())
+             and (note := _script_drift_note(job, str(_resolve_job_script(script))))]
+    if not findings and not notes:
         print(color("✓ Cron doctor found no issues", Colors.GREEN))
         note = f"  Checked {len(jobs)} active job(s)." if jobs else "  No active jobs configured."
         print(color(note, Colors.DIM))
         return 0
-    issue_count = sum(len(issues) for _, issues in findings)
-    print(color(f"Cron doctor found {issue_count} issue(s) across {len(findings)} job(s):", Colors.YELLOW))
-    print()
-    for job, issues in findings:
-        print(f"  {color(job.get('id', '?'), Colors.YELLOW)} {job.get('name', '(unnamed)')}")
-        for issue in issues:
-            print(f"    - {issue}")
-    print()
-    print(color("Review the findings above, then run `hermes cron doctor` again.", Colors.DIM))
-    return 1
+    if notes and not findings:
+        print(color("✓ Cron doctor found no issues", Colors.GREEN))
+    if findings:
+        issue_count = sum(len(issues) for _, issues in findings)
+        print(color(f"Cron doctor found {issue_count} issue(s) across {len(findings)} job(s):", Colors.YELLOW))
+        print()
+        for job, issues in findings:
+            print(f"  {color(job.get('id', '?'), Colors.YELLOW)} {job.get('name', '(unnamed)')}")
+            for issue in issues:
+                print(f"    - {issue}")
+        print()
+        print(color("Review the findings above, then run `hermes cron doctor` again.", Colors.DIM))
+        return 1
+    for job, note in notes:
+        print(color(f"  note  {job.get('id', '?')} {job.get('name', '(unnamed)')}: {note}", Colors.DIM))
+    return 0
 
 
 _JOB_ARG_FIELDS = (("name", "name"), ("deliver", "deliver"), ("failure_deliver", "failure_deliver"),
@@ -782,7 +871,8 @@ _JOB_ARG_FIELDS = (("name", "name"), ("deliver", "deliver"), ("failure_deliver",
                    ("monitor_script", "monitor_script"), ("monitor_url", "monitor_url"),
                    ("continuity", "continuity"), ("reasoning_effort", "reasoning_effort"),
                    ("interpreter", "interpreter"), ("timezone", "timezone"),
-                   ("grace_minutes", "grace_minutes"), ("catch_up", "catch_up"),
+                   ("grace_minutes", "grace_minutes"), ("script_timeout", "script_timeout"),
+                   ("catch_up", "catch_up"),
                    ("wrap_response", "wrap_response"))
 
 

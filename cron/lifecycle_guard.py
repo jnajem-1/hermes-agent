@@ -16,7 +16,7 @@ import shlex
 import signal
 import stat
 import sys
-from itertools import pairwise
+from itertools import chain, pairwise
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
@@ -1245,6 +1245,26 @@ def _heredoc_write_targets(unit: str) -> Iterator[str]:
                 yield token
 
 
+_WINDOWS_ABS_PATH = re.compile(r"^(?:[A-Za-z]:\\|\\\\)")
+
+
+def _literal_windows_write_targets(unit: str) -> Iterator[str]:
+    """Paths a ``cat``/``tee`` heredoc writes its body to, in their literal backslash spelling.
+
+    ``shlex`` treats a backslash as an escape, so ``cat > C:\\Users\\me\\gw.sh`` tokenizes to
+    ``C:Usersmegw.sh`` — a relative path that can never match the later ``sh ./gw.sh``, and the
+    write-then-run guard silently misses it (fail open). On Windows a drive path is literal, so it is
+    recorded as written in addition to the tokenized spelling: extra candidates only, never fewer.
+    """
+    head = unit.lstrip()
+    if not (head.startswith(("cat ", "tee ")) or "| tee " in unit):
+        return
+    for match in re.finditer(r"(?:>>?|tee\s+(?:-a\s+)?)\s*(\"[^\"]+\"|'[^']+'|[^\s;|&]+)", unit):
+        token = match.group(1).strip("\"'")
+        if _WINDOWS_ABS_PATH.match(token):
+            yield token
+
+
 def _collect_heredoc_written_scripts(
     command: str, cwd: Optional[str], written: Optional[dict[Path, list[str]]],
 ) -> dict[Path, list[str]]:
@@ -1256,7 +1276,7 @@ def _collect_heredoc_written_scripts(
 
     written = {} if written is None else written
     for unit, body in iter_heredoc_bodies(command):
-        for target in _heredoc_write_targets(unit):
+        for target in chain(_heredoc_write_targets(unit), _literal_windows_write_targets(unit)):
             for path in _resolved_or_nothing(target, cwd):
                 bodies = written.setdefault(_resolve_lenient(path), [])
                 if body not in bodies:

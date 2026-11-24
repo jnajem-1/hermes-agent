@@ -498,6 +498,8 @@ def _format_job(job: dict[str, Any]) -> dict[str, Any]:
         "last_run_at": job.get("last_run_at"),
         "last_status": job.get("last_status"),
         "last_delivery_error": job.get("last_delivery_error"),
+        "last_delivery_error_at": job.get("last_delivery_error_at"),
+        "script_timeout": job.get("script_timeout"),
         "last_delivery_unverified": job.get("last_delivery_unverified"),
         "last_fire_error": job.get("last_fire_error"),
         "last_error": redact_sensitive_text(
