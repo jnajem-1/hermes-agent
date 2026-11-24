@@ -160,7 +160,11 @@ class _MatrixHtmlSanitizer(HTMLParser):
 def _pre_sanitize_matrix_markdown(text: str) -> str:
     """Remove unsafe raw HTML before Markdown conversion can escape it."""
     result = re.sub(r"(?is)<\s*(script|style)\b[^>]*>.*?<\s*/\s*\1\s*>", "", text or "")
-    result = re.sub(r"""(?is)\s+on[a-z0-9_-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""", "", result)
+    # The unquoted-value branch must stop at a quote as well as at whitespace and ">": an attribute value
+    # that starts unquoted can still be closed by a quote (``href="x onclick=alert(1)$"``). Letting the
+    # branch eat that quote leaves the tag unterminated, and the downstream HTMLParser then swallows the
+    # rest of the message: the sanitizer emits an empty element and the payload loses its text.
+    result = re.sub(r"""(?is)\s+on[a-z0-9_-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>"']+)""", "", result)
     return re.sub(
-        r"""(?is)\s+(href|src)\s*=\s*("[^"]*(?:javascript|data|vbscript):[^"]*"|'[^']*(?:javascript|data|vbscript):[^']*'|[^\s>]*(?:javascript|data|vbscript):[^\s>]*)""",
+        r"""(?is)\s+(href|src)\s*=\s*("[^"]*(?:javascript|data|vbscript):[^"]*"|'[^']*(?:javascript|data|vbscript):[^']*'|[^\s>"']*(?:javascript|data|vbscript):[^\s>"']*)""",
         "", result)

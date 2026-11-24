@@ -89,3 +89,31 @@ def test_tex_in_link_text_still_renders(render):
     assert '<span data-mx-maths="x^2">x^2</span>' in html
     assert '<div data-mx-maths="y">y</div>' in html
     assert 'href="https://example.com"' in html
+
+def test_handler_text_inside_a_link_url_keeps_the_link_and_the_message():
+    """An ``on...=`` sequence inside a quoted attribute value is data, not a handler. The stripping
+    regexes used to end their unquoted-value branch only at whitespace, so they ate the closing quote of
+    the enclosing ``href``: the tag became unterminated, HTMLParser swallowed the rest, and the adapter
+    emitted either an empty body or the tag escaped to literal text instead of a link."""
+    from html.parser import HTMLParser
+
+    from plugins.platforms.matrix.adapter import MatrixAdapter
+
+    adapter = object.__new__(MatrixAdapter)
+    message = '<a href="https://example.com/$x onclick=alert(1)$">link</a> trailing words survive'
+    html = adapter._markdown_to_html(message)
+
+    assert "trailing words survive" in html, html
+
+    tags: list[tuple[str, list[tuple[str, str | None]]]] = []
+
+    class _Tags(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            tags.append((tag, attrs))
+
+    _Tags().feed(html)
+    anchors = [attrs for tag, attrs in tags if tag == "a"]
+    assert len(anchors) == 1, html
+    names = {name for name, _ in anchors[0]}
+    assert "href" in names, (names, html)
+    assert not {n for n in names if n.startswith("on")}, (names, html)

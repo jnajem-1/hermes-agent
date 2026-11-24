@@ -492,16 +492,26 @@ class A2AAdapter(BasePlatformAdapter):
         """Agent Card skills from the live tool registry, restricted by ``advertised_toolsets``;
         static fallback without a registry."""
         configured = (agent or {}).get("advertised_toolsets") if agent else self._advertised_toolsets
+        declared = list(configured or [])
         try:
             from tools.registry import registry as tool_registry
-            allowed = set(configured or []) or None
+            allowed = set(declared) or None
             mapping = {n: tool_registry.get_tool_names_for_toolset(n)
                        for n in tool_registry.get_registered_toolset_names() if allowed is None or n in allowed}
             if mapping:
-                return protocol.skills_from_toolsets(mapping)
+                skills = protocol.skills_from_toolsets(mapping)
+                # A declared capability with no matching toolset still belongs on the card. The registry is
+                # process-global, so keying off it alone makes a served agent advertise different skills
+                # depending on what else this process has imported — discovery must not be that unstable.
+                known = {s["name"] for s in skills}
+                skills.extend(
+                    skill for name in declared if name not in known
+                    for skill in protocol.skills_from_toolsets([name])
+                )
+                return skills
         except Exception:
             logger.debug("A2A: tool registry unavailable for Agent Card", exc_info=True)
-        return protocol.skills_from_toolsets(configured or [])
+        return protocol.skills_from_toolsets(declared)
 
     def _add_pending(self, task_id: str, context_id: str) -> Future:
         fut: Future = Future()

@@ -1515,6 +1515,26 @@ class TestMultiAgentRouting:
         assert card["supportedInterfaces"][0]["tenant"] == "research"
         assert {s["name"] for s in card["skills"]} == {"research", "web"}
 
+    def test_declared_capabilities_survive_a_populated_tool_registry(self, monkeypatch):
+        """The tool registry is process-global: what this process imported must not rewrite a served
+        agent's Agent Card. 'research' has no toolset behind it, so a registry-driven card would drop it."""
+        from plugins.platforms.a2a.adapter import A2AAdapter
+        from gateway.config import PlatformConfig
+        from tools import registry as registry_module
+
+        monkeypatch.setattr(registry_module.registry, "get_registered_toolset_names", lambda: ["web"])
+        monkeypatch.setattr(registry_module.registry, "get_tool_names_for_toolset", lambda _n: ["web_search"])
+
+        adapter = A2AAdapter(PlatformConfig(enabled=True, extra={
+            "agents": {"research": {"profile": "research", "capabilities": ["web", "research"]}}
+        }))
+        route = adapter._route_for_path("/research/.well-known/agent-card.json")
+        card = adapter._build_card("http://agents.example.com/", agent=route["agent"])
+
+        skills = {s["name"]: s for s in card["skills"]}
+        assert set(skills) == {"research", "web"}
+        assert "web_search" in skills["web"]["tags"]  # registry detail is additive, not a filter
+
     def test_tenant_routing_selects_agent_without_path_prefix(self):
         from plugins.platforms.a2a.adapter import A2AAdapter
         from gateway.config import PlatformConfig

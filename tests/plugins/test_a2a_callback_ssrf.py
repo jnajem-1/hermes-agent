@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -25,6 +26,11 @@ class _Recorder(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Length", str(1 << 40))  # declared, never sent
             self.end_headers()
+            # Hold the socket open for a beat before returning. Returning here closes it at once, and on
+            # Windows that close lands as an RST which can overtake the response just written: the client
+            # then sees a reset instead of the 200 that decides the only thing this test measures.
+            self.wfile.flush()
+            time.sleep(0.2)
             return
         if self.server.redirect_to:
             self.send_response(302)

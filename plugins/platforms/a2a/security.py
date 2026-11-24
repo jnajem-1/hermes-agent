@@ -5,6 +5,7 @@ credential redaction; JSONL audit; trusted-peer allow-list; HMAC push signing; S
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -264,8 +265,19 @@ def post_callback(url: str, body: bytes, headers: dict, *, localhost_mode: bool,
         client = httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False)
     else:
         client = create_ssrf_safe_client(timeout=timeout, follow_redirects=False)
-    with client, client.stream("POST", url, content=body, headers=headers) as response:
-        return response.status_code  # the peer's body is never read: only the status matters
+    try:
+        response = client.send(client.build_request("POST", url, content=body, headers=headers), stream=True)
+        try:
+            return response.status_code  # the peer's body is never read: only the status matters
+        finally:
+            # The unread body is why teardown can fail: Windows delivers the peer's RST as WinError
+            # 10053/10054 while the socket closes, which would report a delivered push as failed.
+            # The status already arrived, so a failure to tear down cannot change the outcome.
+            with contextlib.suppress(OSError, httpx.HTTPError):
+                response.close()
+    finally:
+        with contextlib.suppress(OSError, httpx.HTTPError):
+            client.close()
 
 
 def audit(direction: str, peer: str, task_id: str, summary: str) -> None:
