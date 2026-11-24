@@ -647,9 +647,27 @@ def get_missing_env_vars(required_only: bool = False) -> list[dict[str, Any]]:
         if not get_env_value(var_name)]
 
 
+_SUBSCRIPT_RE = re.compile(r"\[(\d+)\]")
+_BRACKET_RE = re.compile(r"\[([^\]]*)\]")
+
+
+def _expand_subscripts(segment: str) -> list[str]:
+    """Split ``options[0]`` into ``["options", "0"]`` so a bracketed index reaches the real list item.
+
+    Only all-digit brackets are sugar. A segment carrying any other bracket (``a[b]``) is a legitimate
+    literal key and is returned untouched, because config keys may contain brackets of their own.
+    """
+    if "[" not in segment:
+        return [segment]
+    if any(not content.isdigit() for content in _BRACKET_RE.findall(segment)):
+        return [segment]
+    return [piece for piece in _SUBSCRIPT_RE.split(segment) if piece]
+
+
 def _split_key_path(key: str) -> list[str]:
     """Split a dotted config-key path, honoring backslash-escaped dots (``a\\.b`` -> ``a.b``).
-    Backslashes before any other character are preserved verbatim.
+    Backslashes before any other character are preserved verbatim. All-digit bracket subscripts
+    expand to their own numeric segment (``options[0].model`` -> ``options``, ``0``, ``model``).
 
     ``hermes config set`` uses ``.`` as the nesting separator, so a key that itself contains a literal dot
     (e.g. provider names like ``qwen3.5-397b-wafer``) was silently split into bogus nested segments
@@ -671,7 +689,10 @@ def _split_key_path(key: str) -> list[str]:
             current.append(ch)
         i += 1
     parts.append("".join(current))
-    return parts
+    expanded: list[str] = []
+    for part in parts:
+        expanded.extend(_expand_subscripts(part))
+    return expanded
 
 
 def _greedy_literal_match(container: dict, parts: list) -> Optional[tuple[str, int]]:

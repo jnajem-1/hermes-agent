@@ -1378,7 +1378,15 @@ class TestEnvWriteDenylist:
             "git_config_parameters", "ld_preload",
         ],
     )
-    def test_non_exec_near_misses_still_writable(self, allowed_key):
+    def test_non_exec_near_misses_still_writable(self, allowed_key, monkeypatch):
+        import hermes_cli.config as config_mod
+
+        if allowed_key.islower():
+            # Lowercase spellings of denied exec names are inert only where env names are
+            # case-sensitive. On Windows the same spelling IS the denied name (covered by
+            # test_windows_policy_denies_mixed_case_exec_names), so pin POSIX semantics here
+            # instead of asserting something the host makes impossible.
+            monkeypatch.setattr(config_mod, "_IS_WINDOWS", False)
         save_env_value(allowed_key, "test-value-123")
         env = load_env()
         assert env[allowed_key] == "test-value-123"
