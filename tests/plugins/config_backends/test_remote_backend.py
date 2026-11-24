@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,19 @@ from hermes_cli.config_backend import (
     ConfigBackendUnavailable, ConfigLockedError, ConfigValueError, get_config_backend, write_config_key)
 
 from .stub_plane import INSTANCE, TOKEN, StubPlane, remote_env
+
+
+@pytest.fixture(autouse=True)
+def _restore_process_env():
+    """Several tests here call ``load_hermes_dotenv``, which writes the plane's ``.env`` into the
+    real ``os.environ`` by design. Nothing undoes that, so keys such as ``LLM_MODEL`` leaked into
+    later files in the same process and changed what ``migrate_config`` wrote (it carried the
+    ambient model into the rewritten ``.env``). Snapshot and restore around every test here."""
+    before = dict(os.environ)
+    yield
+    for key in [k for k in os.environ if k not in before]:
+        del os.environ[key]
+    os.environ.update(before)
 
 
 @pytest.fixture
