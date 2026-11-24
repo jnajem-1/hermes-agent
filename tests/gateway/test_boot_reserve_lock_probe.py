@@ -8,15 +8,19 @@ flock exactly where a probe holds it and boot through the real reserve.
 """
 import asyncio
 from contextlib import contextmanager
-import fcntl
 from pathlib import Path
 import subprocess
 import sys
 import threading
 import time
-from types import SimpleNamespace
 
 import pytest
+
+if sys.platform == "win32":  # these probe a real flock; fcntl does not exist on Windows
+    pytest.skip("POSIX-only: flocks gateway.lock with fcntl", allow_module_level=True)
+
+import fcntl
+from types import SimpleNamespace
 
 from gateway.run_bootstrap import _browse_reconcile_reserve_wait_s, _reserve_waiting_out_browse_reconcile
 from gateway.run_profile_reconcile import GatewayProfileReconcileMixin

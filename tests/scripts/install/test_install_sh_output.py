@@ -1,12 +1,17 @@
 """install.sh child output: one status line on a terminal, the full stream in CI."""
 import os
+import sys
 from pathlib import Path
+
+import pytest
+
+if sys.platform == "win32":  # a pty is how this test fakes a terminal; Windows has none
+    pytest.skip("POSIX-only: needs pty to fake a terminal", allow_module_level=True)
+
 import pty
 import re
 import shlex
 import subprocess
-
-import pytest
 
 pytestmark = pytest.mark.platforms("posix")
 INSTALL_SH = Path(__file__).resolve().parents[3] / "scripts" / "install.sh"

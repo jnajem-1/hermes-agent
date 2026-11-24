@@ -33,10 +33,15 @@ def plane_env(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     with StubPlane() as plane:
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "TMPDIR", "LANG", "TZ",
-                                                           "PYTHONHASHSEED", "HERMES_TEST_ISOLATION"}}
+        # Windows resolves ~ from USERPROFILE/HOMEDRIVE+HOMEPATH, not HOME: a minimal env without
+        # them kills every child inside pathlib.Path.home() before it starts.
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "HOME", "TMPDIR", "LANG", "TZ", "PYTHONHASHSEED",
+                        "HERMES_TEST_ISOLATION", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+                        "SYSTEMROOT", "COMSPEC", "PATHEXT"}}
         env.update(remote_env(plane), HERMES_HOME=str(home), PYTHONPATH=str(REPO), HERMES_YOLO_MODE="",
-                   PYTHONDONTWRITEBYTECODE="1")
+                   PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1")
         plane.upper = {"display": {"personality": "concise"}}
         yield plane, env, home
 

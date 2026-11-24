@@ -216,6 +216,48 @@ def test_checkout_inside_a_guarded_root_is_not_hermes_state():
         guard.check(PROJECT_ROOT.parent / "config.yaml")
 
 
+def test_the_pm_manifest_is_readable_but_never_written(tmp_path):
+    """``<root>/manifest.json`` names the PM dependency generations and the venv to use.
+    Interpreter selection reads it per job (a cron script's python comes from it), so reading it
+    is not reading Hermes state; changing it is."""
+    from tests.home_io_guard import HomeIOGuard
+
+    root = tmp_path / ".hermes"
+    root.mkdir()
+    guard = HomeIOGuard(lambda: [root])
+    guard.check(root / "manifest.json")
+    with pytest.raises(AssertionError, match="REAL hermes home"):
+        guard.check(root / "manifest.json", destructive=True)
+    # A manifest deeper in the tree is not the PM manifest.
+    with pytest.raises(AssertionError, match="REAL hermes home"):
+        guard.check(root / "pm" / "manifest.json")
+
+
+def test_the_install_registry_is_readable_but_never_written(tmp_path):
+    """``<root>/installs/<id>/facts.json`` is how a borrowed runtime is discovered, so tests that
+    spawn a child under a fresh HERMES_HOME must be able to read it. Its contents are still state."""
+    from tests.home_io_guard import HomeIOGuard
+
+    root = tmp_path / ".hermes"
+    facts = root / "installs" / "9b44f38fc5e32637" / "facts.json"
+    facts.parent.mkdir(parents=True)
+    guard = HomeIOGuard(lambda: [root])
+    guard.check(facts)
+    with pytest.raises(AssertionError, match="REAL hermes home"):
+        guard.check(facts, destructive=True)
+    # An arbitrary facts.json under the root is not the registry.
+    other = root / "cron" / "facts.json"
+    other.parent.mkdir(parents=True)
+    with pytest.raises(AssertionError, match="REAL hermes home"):
+        guard.check(other)
+    # The pre-PM ledger path is the same registry, and it is still write-protected.
+    legacy = root / "tools" / "facts.json"
+    legacy.parent.mkdir(parents=True)
+    guard.check(legacy)
+    with pytest.raises(AssertionError, match="REAL hermes home"):
+        guard.check(legacy, destructive=True)
+
+
 @pytest.mark.parametrize("kind", ["environments", "test-environment"])
 def test_pm_generation_dir_around_the_running_venv_is_the_interpreter(tmp_path, kind):
     """scripts/run_tests.sh runs ``<home>/installs/<key>/<kind>/<gen>/venv`` with HOME pointed at the

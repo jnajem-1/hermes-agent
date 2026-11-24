@@ -13,7 +13,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-pytest.importorskip("telegram")
+_telegram_pkg = pytest.importorskip("telegram.request", reason="python-telegram-bot not installed")
+if not getattr(__import__("sys").modules.get("telegram"), "__file__", None):
+    # Another test directory installs a bare ``sys.modules["telegram"]`` stub for gateway tests. Without this
+    # guard the stub satisfies importorskip, these cases run against a fake PTB, and every one of them fails.
+    pytest.skip("'telegram' resolves to a test stub, not python-telegram-bot", allow_module_level=True)
+# A bare "telegram" is not enough: pytest inserts tests/plugins/platforms on sys.path to import
+# its own modules, and the sibling ./telegram/ test directory then resolves as a namespace
+# package, so the guard passes and the real submodule imports below fail at collection.
 from telegram import InlineQuery, Message, PhotoSize, Sticker, Update
 from telegram.ext import Application, ApplicationHandlerStop, ConversationHandler, Defaults, MessageHandler, TypeHandler, filters
 from telegram.request import BaseRequest

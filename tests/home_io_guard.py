@@ -64,6 +64,21 @@ def _contains(path: str, prefix: str) -> bool:
     return prefix.startswith(path) if path == os.sep else prefix.startswith(path + os.sep)
 
 
+def _is_pm_registry_read(absolute: str, roots: tuple[str, ...]) -> bool:
+    """The PM metadata a *borrowed* runtime is discovered through: ``<root>/manifest.json``,
+    ``<root>/installs/<id>/facts.json`` (current registry) and ``<root>/tools/facts.json`` (the
+    pre-PM-era ledger). All are read-only provisioning lookups, refused for writes — the install
+    registry describes which interpreter exists, not what the user did."""
+    for root in roots:
+        if absolute in (os.path.join(root, "manifest.json"),
+                        os.path.join(root, "tools", "facts.json")):
+            return True
+        installs = os.path.join(root, "installs") + os.sep
+        if absolute.startswith(installs) and os.path.basename(absolute) == "facts.json":
+            return True
+    return False
+
+
 class HomeIOGuard:
     def __init__(self, roots, installed_apps=lambda: ()):
         self.roots = roots
@@ -103,6 +118,14 @@ class HomeIOGuard:
             # Resolving the root itself (get_default_hermes_root's relative_to
             # probe) reads no state; only its contents are guarded.
             if metadata and absolute in roots:
+                return
+            # ``<root>/manifest.json`` names the PM dependency generations and the venv the
+            # bootstrap should use; ``<root>/installs/<id>/facts.json`` is the registry a
+            # borrowed runtime is discovered through. Reading either is interpreter selection
+            # (the same class as _INTERPRETER_PREFIXES below), not reading Hermes state, and both
+            # are re-read per job/import — e.g. choosing the python a cron job's script runs
+            # under — so collection-time imports cannot avoid them. Writes stay refused.
+            if not destructive and _is_pm_registry_read(absolute, roots):
                 return
             # ``shutil.which`` stats/accesses ``<PATH entry>/<name>``, and command resolution
             # realpath()s the entry itself (is it a Hermes-managed bin dir?), which lstats each of

@@ -6,6 +6,7 @@ denies or was never registered. A configured Feishu allowlist still decides on i
 """
 
 import asyncio
+import importlib.machinery
 import importlib.util
 import sys
 from types import SimpleNamespace
@@ -15,14 +16,20 @@ import pytest
 
 
 def _ensure_feishu_mocks():
-    if importlib.util.find_spec("lark_oapi") is None and "lark_oapi" not in sys.modules:
+    # Never ask find_spec about a name already stubbed in sys.modules: it reads module.__spec__
+    # and raises "lark_oapi.__spec__ is not set" once an earlier test file installed a MagicMock.
+    if "lark_oapi" not in sys.modules and importlib.util.find_spec("lark_oapi") is None:
         mod = MagicMock()
+        mod.__spec__ = importlib.machinery.ModuleSpec("lark_oapi", None)
         for name in ("lark_oapi", "lark_oapi.api.im.v1", "lark_oapi.event", "lark_oapi.event.callback_type"):
             sys.modules.setdefault(name, mod)
-    if importlib.util.find_spec("aiohttp") is None and "aiohttp" not in sys.modules:
+    # Never ask find_spec about a name already stubbed in sys.modules: it reads module.__spec__
+    # and raises "aiohttp.__spec__ is not set" once an earlier test file installed a MagicMock.
+    if "aiohttp" not in sys.modules and importlib.util.find_spec("aiohttp") is None:
         aio = MagicMock()
         sys.modules.setdefault("aiohttp", aio)
         sys.modules.setdefault("aiohttp.web", aio.web)
+        aio.__spec__ = importlib.machinery.ModuleSpec("aiohttp", None)
 
 
 _ensure_feishu_mocks()

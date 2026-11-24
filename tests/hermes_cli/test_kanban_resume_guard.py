@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from tests.fixtures.storage_holder import raw_holder
 from tests.fixtures.storage_seed import seed_messages, seed_session
-from tests.gateway.fixtures.storage_handles import storage_handle
+from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
 
 
 def _db(tmp_path, *, source="cli", flip_source_to=None, parent=None, end_reason=None,

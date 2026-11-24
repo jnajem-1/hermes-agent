@@ -312,7 +312,7 @@ def test_the_open_reason_reads_the_session_through_the_store(tmp_path):
     session row through the profile's storage handle (no receipt here, so the logical row is the transcript)."""
     from gateway import session_open
     from tests.fixtures.storage_seed import seed_messages, seed_session
-    from tests.gateway.fixtures.storage_handles import storage_handle
+    from tests.gateway.fixtures.storage_handles import close_storage_handles, storage_handle
 
     store = storage_handle(tmp_path)
     try:

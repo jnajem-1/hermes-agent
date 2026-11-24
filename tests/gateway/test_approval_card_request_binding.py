@@ -5,6 +5,7 @@ Two approvals can share one chat session: the first card's request ends (timeout
 the first card must not resolve the newer request, which the user has not seen yet.
 """
 
+import importlib.machinery
 import importlib.util
 import os
 import sys
@@ -16,10 +17,13 @@ import pytest
 from gateway.config import PlatformConfig
 from gateway.platforms.base import SendResult
 
-if importlib.util.find_spec("lark_oapi") is None and "lark_oapi" not in sys.modules:
+# Never ask find_spec about a name already stubbed in sys.modules: it reads module.__spec__
+# and raises "lark_oapi.__spec__ is not set" once an earlier test file installed a MagicMock.
+if "lark_oapi" not in sys.modules and importlib.util.find_spec("lark_oapi") is None:
     _lark = MagicMock()
     for _name in ("lark_oapi", "lark_oapi.api.im.v1", "lark_oapi.event", "lark_oapi.event.callback_type"):
         sys.modules.setdefault(_name, _lark)
+    _lark.__spec__ = importlib.machinery.ModuleSpec("lark_oapi", None)
 
 from tools import approval
 from tools.approval_gateway_wait import _ApprovalEntry

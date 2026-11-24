@@ -4,6 +4,7 @@ The SDK is optional, so callback-response types are stubbed and outbound sends a
 """
 
 import asyncio
+import importlib.machinery
 import importlib.util
 import json
 import sys
@@ -12,8 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-if importlib.util.find_spec("lark_oapi") is None and "lark_oapi" not in sys.modules:
+# Never ask find_spec about a name already stubbed in sys.modules: it reads module.__spec__ and
+# raises "lark_oapi.__spec__ is not set" once an earlier test file installed a MagicMock.
+if "lark_oapi" not in sys.modules and importlib.util.find_spec("lark_oapi") is None:
     _mod = MagicMock()
+    _mod.__spec__ = importlib.machinery.ModuleSpec("lark_oapi", None)
     for _name in ("lark_oapi", "lark_oapi.api.im.v1", "lark_oapi.event", "lark_oapi.event.callback_type"):
         sys.modules.setdefault(_name, _mod)
 

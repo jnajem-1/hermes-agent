@@ -91,8 +91,12 @@ def test_cloud_agent_first_remote_read_completes_cold(tmp_path, expired, layout)
     with StubPlane() as plane:
         plane.upper = {"display": {"skin": "ares"}}
         (home / "auth.json").write_text(json.dumps(_auth_json(plane, expired=expired)))
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED"}}
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED",
+                        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT",
+                        "COMSPEC", "PATHEXT"}}
         env.update(HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1",
                    HERMES_CONFIG_BACKEND="remote", HERMES_CONFIG_REMOTE_URL=plane.url,
                    HERMES_CONFIG_INSTANCE_ID=INSTANCE, PROBE_PROVIDER="1" if layout else "")
         assert not any(k.startswith("GATEWAY_RELAY_IDP_") for k in env)  # Cloud: the Nous credential
@@ -132,8 +136,12 @@ def test_importing_auth_and_resolving_the_nous_token_read_no_config(tmp_path):
     _install_probe_provider(home, "model-providers")  # a $HERMES_HOME provider plugin is not read either
     with StubPlane() as plane:
         (home / "auth.json").write_text(json.dumps(_auth_json(plane, expired=False)))
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED"}}
-        env.update(HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1")
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED",
+                        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT",
+                        "COMSPEC", "PATHEXT"}}
+        env.update(HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1")
         assert _value(_run([sys.executable, "-c", AUTH_IMPORT_READS_NO_CONFIG, NOUS_TOKEN], env)) == "ok"
 
 
@@ -175,9 +183,13 @@ def test_cold_auth_import_on_another_thread_never_waits_for_the_fetch(tmp_path):
     home.mkdir()
     with StubPlane() as plane:
         plane.upper = {"display": {"skin": "ares"}}
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED"}}
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED",
+                        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT",
+                        "COMSPEC", "PATHEXT"}}
         env.update(remote_env(plane), HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO),
-                   PYTHONDONTWRITEBYTECODE="1")
+                   PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1")
         assert _value(_run([sys.executable, "-c", CONCURRENT_AUTH_IMPORT], env)) == "ares"
 
 
@@ -212,8 +224,12 @@ def test_multiplexed_token_resolution_binds_its_scope_without_reading_config(tmp
     with StubPlane() as plane:
         (home / "auth.json").write_text(json.dumps(_auth_json(plane, expired=True)))
         (home / ".env").write_text(f"HERMES_PORTAL_BASE_URL={plane.url}\n")
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED"}}
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED",
+                        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT",
+                        "COMSPEC", "PATHEXT"}}
         env.update(HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1",
                    HERMES_SHARED_AUTH_DIR=str(tmp_path / "shared"))
         assert _value(_run([sys.executable, "-c", MULTIPLEX_TOKEN_READS_NO_CONFIG, NOUS_TOKEN, str(home)], env)) == "ok"
         assert plane.nous_refreshes == 1

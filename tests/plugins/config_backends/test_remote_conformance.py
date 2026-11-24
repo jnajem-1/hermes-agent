@@ -43,7 +43,9 @@ def test_vendored_fixtures_match_manifest_and_source():
         listed[rel.strip()] = digest
     for rel, digest in listed.items():
         assert hashlib.sha256((VENDOR / rel).read_bytes()).hexdigest() == digest, rel
-    on_disk = {str(p.relative_to(VENDOR)) for p in (VENDOR / "conformance").rglob("*.json")}
+    # The manifest lists POSIX-style relative paths; ``str(Path)`` yields backslashes on Windows,
+    # so the two sets would never match there. Compare in the manifest's own convention.
+    on_disk = {p.relative_to(VENDOR).as_posix() for p in (VENDOR / "conformance").rglob("*.json")}
     assert on_disk == set(listed), "every vendored fixture is in the manifest and vice versa"
     assert len(RESOLUTION) > 0
 

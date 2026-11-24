@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+
+if sys.platform == "win32":  # the e2e upgrade helpers check file ownership with pwd
+    pytest.skip("POSIX-only: e2e upgrade helpers need pwd", allow_module_level=True)
 
 from tests.e2e.core.upgrade import _helpers as H
 from tests.e2e.core.upgrade import _install_helpers as I

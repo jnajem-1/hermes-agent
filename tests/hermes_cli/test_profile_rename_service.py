@@ -8,6 +8,13 @@ from __future__ import annotations
 
 import os
 import platform
+import sys
+
+import pytest
+
+if sys.platform == "win32":  # the rename service checks ownership with pwd/grp, which Windows lacks
+    pytest.skip("POSIX-only: profile ownership checks need pwd", allow_module_level=True)
+
 import pwd
 import subprocess
 from pathlib import Path

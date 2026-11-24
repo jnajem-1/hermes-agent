@@ -23,6 +23,14 @@ from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import SendResult
 from gateway.platforms.event import MessageEvent
 from gateway.run import GatewayRunner
+
+if sys.platform == "win32":
+    def pytest_ignore_collect(collection_path, config):
+        """These suites are POSIX-only by construction: their helpers import ``pwd``/``fcntl`` at module
+        scope and every case spawns sandboxed processes (bwrap, signals, a fake ``systemctl``). On
+        Windows that dies during collection, before any skip can be evaluated, so a plain ``pytest
+        tests`` reports dozens of import errors instead of the suites it can actually run."""
+        return True
 from gateway.session import SessionEntry, SessionSource, build_session_key
 from hermes_cli.version_info import _reset_version_info_cache
 

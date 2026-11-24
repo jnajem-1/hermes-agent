@@ -37,8 +37,12 @@ def test_cold_read_of_another_profile_inside_a_bound_scope_completes(tmp_path):
     with StubPlane() as plane:
         for directory in (home, home / "profiles" / "a", home / "profiles" / "b"):
             (directory / "auth.json").write_text(json.dumps(_auth_json(plane, expired=False)))
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED"}}
+        env = {k: v for k, v in os.environ.items()
+               if k in {"PATH", "LANG", "TZ", "TMPDIR", "PYTHONHASHSEED",
+                        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT",
+                        "COMSPEC", "PATHEXT"}}
         env.update(HOME=str(tmp_path), HERMES_HOME=str(home), PYTHONPATH=str(REPO), PYTHONDONTWRITEBYTECODE="1",
+                   HERMES_DISABLE_LAZY_INSTALLS="1",
                    HERMES_CONFIG_BACKEND="remote", HERMES_CONFIG_REMOTE_URL=plane.url,
                    HERMES_CONFIG_INSTANCE_ID=INSTANCE)
         assert not any(k.startswith("GATEWAY_RELAY_IDP_") for k in env)  # Cloud: the Nous credential
