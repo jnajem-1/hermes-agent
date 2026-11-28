@@ -1,19 +1,16 @@
 name: Fork suite (POSIX)
 
-# The repo's own CI asks for blacksmith-* runners, which a personal fork does not have, so
-# every upstream workflow queues forever here. This file runs the same suite on GitHub-hosted
-# Ubuntu so a fork can produce a real POSIX result. It is deliberately not part of a PR: the
-# workflow lives on its own branch and is deleted after the run.
+# Upstream's workflows request blacksmith-* runners, which a personal fork does not have, so
+# every run queues forever. This runs the core suite (scripts/run_tests.sh, what just test-all
+# runs upstream) on GitHub-hosted Ubuntu in six 4-vCPU slices. tests/e2e is out of scope: it
+# needs its own Node and display setup.
 #
-# Scope: `scripts/run_tests.sh`, the same command `just test-all` runs upstream (the core suite
-# with per-file subprocess isolation). tests/e2e is a separate upstream job with its own Node and
-# display requirements and is out of scope here.
+# Trigger: workflow_dispatch, plus a push of any ci/run/** branch. Dispatch is the intent, but
+# GitHub has never parsed a trigger out of this path's earlier revisions, so the push branch
+# exists as a working fallback.
 
 on:
   workflow_dispatch:
-  # Dispatch on this path never registers on the fork (API 422 "does not have
-  # workflow_dispatch trigger"), so a push is the reliable trigger: push the branch under
-  # ci/run/ and it runs on that exact tree.
   push:
     branches: ["ci/run/**"]
 
@@ -21,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: fork-full-tests-${{ github.ref }}
+  group: fork-suite-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
