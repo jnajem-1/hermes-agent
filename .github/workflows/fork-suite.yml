@@ -1,4 +1,4 @@
-name: Fork full tree (POSIX)
+name: Fork suite (POSIX)
 
 # The repo's own CI asks for blacksmith-* runners, which a personal fork does not have, so
 # every upstream workflow queues forever here. This file runs the same suite on GitHub-hosted
