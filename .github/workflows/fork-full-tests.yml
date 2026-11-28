@@ -11,6 +11,11 @@ name: Fork full tree (POSIX)
 
 on:
   workflow_dispatch:
+  # Dispatch on this path never registers on the fork (API 422 "does not have
+  # workflow_dispatch trigger"), so a push is the reliable trigger: push the branch under
+  # ci/run/ and it runs on that exact tree.
+  push:
+    branches: ["ci/run/**"]
 
 permissions:
   contents: read
