@@ -79,3 +79,5 @@ jobs:
             test-results/**
           if-no-files-found: ignore
           retention-days: 7
+
+# Re-registered so workflow_dispatch is picked up on the fork default branch.
